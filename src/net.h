@@ -559,8 +559,10 @@ public:
     //! May not be called more than once
     void SetAddrLocal(const CService& addrLocalIn) EXCLUSIVE_LOCKS_REQUIRED(!m_addr_local_mutex);
 
+    //RANDY_COMMENTED
     CNode* AddRef()
     {
+        //Add a counter to how many times this is being actively referenced
         nRefCount++;
         return this;
     }
@@ -726,6 +728,9 @@ public:
     void PushMessage(CNode* pnode, CSerializedNetMsg&& msg) EXCLUSIVE_LOCKS_REQUIRED(!m_total_bytes_sent_mutex);
 
     using NodeFn = std::function<void(CNode*)>;
+
+    //RANDY_COMMENTED
+    //A method that takes ina function accepting a CNode, and runs them on all nodes from vNodes that are fully connected
     void ForEachNode(const NodeFn& func)
     {
         LOCK(m_nodes_mutex);

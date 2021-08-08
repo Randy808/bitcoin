@@ -62,6 +62,8 @@ void util::ThreadRename(std::string&& name)
     SetInternalName(std::move(name));
 }
 
+//if HAVE_THREAD_LOCAL then assign the g_thread_name to the parameter 'name'
+//Otherwise do nothing
 void util::ThreadSetInternalName(std::string&& name)
 {
     SetInternalName(std::move(name));

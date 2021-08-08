@@ -125,6 +125,7 @@ void CConnman::AddAddrFetch(const std::string& strDest)
     m_addr_fetches.push_back(strDest);
 }
 
+//Gets an unsigned 16 bit integer representing a port parameter that was passed in on execution
 uint16_t GetListenPort()
 {
     // If -bind= is provided with ":port" part, use that (first one if multiple are provided).
@@ -155,50 +156,106 @@ uint16_t GetListenPort()
     return static_cast<uint16_t>(gArgs.GetIntArg("-port", Params().GetDefaultPort()));
 }
 
+
+//RANDY_COMMENTED
+//BITCOIN_START
 // find 'best' local address for a particular peer
+//BITCOIN_END
 bool GetLocal(CService& addr, const CNetAddr *paddrPeer)
 {
+
+    //If fListen isn't true
     if (!fListen)
+        //Just return false
         return false;
 
+    //Initialize a best score to -1
     int nBestScore = -1;
+    //initialize bestReachability to a lowe number as well
     int nBestReachability = -1;
     {
+<<<<<<< HEAD
         LOCK(g_maplocalhost_mutex);
+=======
+        //lock in-memory local hosts?
+        LOCK(cs_mapLocalHost);
+
+        //For every entry in local host map
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         for (const auto& entry : mapLocalHost)
         {
+            //Make the score equal the nScore of that 'LocalServiceInfo' found in the map
             int nScore = entry.second.nScore;
+
+            //Get a reachability score from the CNetAddr using parameter
             int nReachability = entry.first.GetReachabilityFrom(paddrPeer);
+
+            //If reachability is greater than the best or the reachability is the same as the best but with a better score
             if (nReachability > nBestReachability || (nReachability == nBestReachability && nScore > nBestScore))
             {
+                //Set the new best and set the 'addr' reference in the parameter to the current entry we're iterating with
                 addr = CService(entry.first, entry.second.nPort);
                 nBestReachability = nReachability;
                 nBestScore = nScore;
             }
         }
     }
+
+    //Return whether we were able to find at least one address that could override the default best score
     return nBestScore >= 0;
 }
 
+//RANDY COMMENTED
+/*
+Deserializes the seeds passed in and returns them in an output vector
+*/
+//BITCOIN_START
 //! Convert the serialized seeds into usable address objects.
+//BITCOIN_END
 static std::vector<CAddress> ConvertSeeds(const std::vector<uint8_t> &vSeedsIn)
 {
+    //B
     // It'll only connect to one or two seed nodes because once it connects,
     // it'll get a pile of addresses with newer timestamps.
     // Seed nodes are given a random 'last seen time' of between one and two
     // weeks ago.
+    //B_END
+
+    //Create one week in seconds
     const int64_t nOneWeek = 7*24*60*60;
+
+    //Create vector for seeds out
     std::vector<CAddress> vSeedsOut;
+
+    //Create a random context
     FastRandomContext rng;
+
+    //Create a steam that takes in vSeedsIn from the parameter and is sent to network?
     CDataStream s(vSeedsIn, SER_NETWORK, PROTOCOL_VERSION | ADDRV2_FORMAT);
+
+    //While there remains information in the stream from seeds
     while (!s.eof()) {
+        //Declare a CService
         CService endpoint;
+
+        //give data from the stream to the endpoint
+        //Or rather maybe it's just populate data of endpoint from stream
         s >> endpoint;
+
+        //Declare an address representing endpoint?
         CAddress addr{endpoint, GetDesirableServiceFlags(NODE_NONE)};
+
+        //Set the time of the address as the curent time minus one week and some change (randomly generated)
         addr.nTime = GetTime() - rng.randrange(nOneWeek) - nOneWeek;
+
+        //Print out the address
         LogPrint(BCLog::NET, "Added hardcoded seed: %s\n", addr.ToString());
+
+        //Add address to seeds out
         vSeedsOut.push_back(addr);
     }
+
+    //Return vector of seeds converted to addresses
     return vSeedsOut;
 }
 
@@ -435,6 +492,8 @@ static CAddress GetBindAddress(const Sock& sock)
     return addr_bind;
 }
 
+//TODO: COMMENT
+//RANDY COMMENT
 CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure, ConnectionType conn_type)
 {
     assert(conn_type != ConnectionType::INBOUND);
@@ -801,40 +860,81 @@ void V1TransportSerializer::prepareForTransport(CSerializedNetMsg& msg, std::vec
     CVectorWriter{SER_NETWORK, INIT_PROTO_VERSION, header, 0, hdr};
 }
 
+//Sends queued data in the node parameter's vSendMsg character vector using the node's socket descriptor property and writes the metadata of the sent data to the node property
 size_t CConnman::SocketSendData(CNode& node) const
 {
+    //Get iterator at start of send message queue (a char vector)
     auto it = node.vSendMsg.begin();
+
+    //initialize size counter for how much data has been sent so far
     size_t nSentSize = 0;
 
+    //While the iterator is not at the end of the send queue
     while (it != node.vSendMsg.end()) {
+        //Dereference the iterator into data
         const auto& data = *it;
+        //Make sure the data isn't bigger than the sendOffset
         assert(data.size() > node.nSendOffset);
+
+        //Initi bytes to 0
         int nBytes = 0;
         {
+<<<<<<< HEAD
             LOCK(node.m_sock_mutex);
             if (!node.m_sock) {
                 break;
             }
             nBytes = node.m_sock->Send(reinterpret_cast<const char*>(data.data()) + node.nSendOffset, data.size() - node.nSendOffset, MSG_NOSIGNAL | MSG_DONTWAIT);
+=======
+            //Lock socket
+            LOCK(node.cs_hSocket);
+
+            //If socket file descriptor/id is invalid then break
+            if (node.hSocket == INVALID_SOCKET)
+                break;
+
+            //Set the number of bytes that was able to be successfully sent
+            nBytes = send(node.hSocket, reinterpret_cast<const char*>(data.data()) + node.nSendOffset, data.size() - node.nSendOffset, MSG_NOSIGNAL | MSG_DONTWAIT);
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         }
+
+        //If something was sent (size of sent data was bigger than 0)
         if (nBytes > 0) {
+<<<<<<< HEAD
             node.m_last_send = GetTime<std::chrono::seconds>();
+=======
+            //Set metadata for node of when things were last sent
+            node.nLastSend = GetSystemTimeInSeconds();
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             node.nSendBytes += nBytes;
             node.nSendOffset += nBytes;
             nSentSize += nBytes;
+
+            //If all the data at the current iterator has been sent (should be a char since we're in char vec)
             if (node.nSendOffset == data.size()) {
+                //Set sendOffset to 0
                 node.nSendOffset = 0;
+
+                //Subtract the size of data we just sent from sendSize
                 node.nSendSize -= data.size();
+
+                //Pause sending if the sendSize is bigger than the max size for what should be sent
                 node.fPauseSend = node.nSendSize > nSendBufferMaxSize;
+                //increment iterator
                 it++;
             } else {
+                //BITCOIN_START
                 // could not send full message; stop sending more
+                //BITCOIN_END
                 break;
             }
         } else {
+            //Error out if not able to send anything
             if (nBytes < 0) {
-                // error
+                // get the last error from error code
                 int nErr = WSAGetLastError();
+
+                //Log and close socket if error isn't recoverable (revisit)
                 if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS) {
                     LogPrint(BCLog::NET, "socket send error for peer=%d: %s\n", node.GetId(), NetworkErrorString(nErr));
                     node.CloseSocketDisconnect();
@@ -849,6 +949,8 @@ size_t CConnman::SocketSendData(CNode& node) const
         assert(node.nSendOffset == 0);
         assert(node.nSendSize == 0);
     }
+
+    //Erase what was sent from node's send queue
     node.vSendMsg.erase(node.vSendMsg.begin(), it);
     return nSentSize;
 }
@@ -861,8 +963,13 @@ size_t CConnman::SocketSendData(CNode& node) const
  *   to forge.  In order to partition a node the attacker must be
  *   simultaneously better at all of them than honest peers.
  */
+
+//RANDY_COMMENTED
+//REDO
+//Add every node in vNodes as an eviciton candidate if it's an inbound connection and doesn't have permission to not be banned. Determine if a candidate should be evicted by calling the function 'SelectNodeToEvict' and retrieving a node id. If none of the nodes in vNodes have that id then return false, otherwise set the disconnect flag on the node to be evicted and return true.
 bool CConnman::AttemptToEvictConnection()
 {
+    //Create a vector of object type 'NodeEvictionCandidate'
     std::vector<NodeEvictionCandidate> vEvictionCandidates;
     {
 
@@ -889,18 +996,38 @@ bool CConnman::AttemptToEvictConnection()
             vEvictionCandidates.push_back(candidate);
         }
     }
+
+    //Create an optional nodeid type and the value it holds will be the value returned from SelectNodeToEvict (which is given candidates)
     const std::optional<NodeId> node_id_to_evict = SelectNodeToEvict(std::move(vEvictionCandidates));
+
+    //If the optional is null/not-defined return false
     if (!node_id_to_evict) {
         return false;
     }
+<<<<<<< HEAD
     LOCK(m_nodes_mutex);
     for (CNode* pnode : m_nodes) {
+=======
+
+    //If there is a node to evict, lock the vNodes
+    LOCK(cs_vNodes);
+
+    //For every node in vNodes
+    for (CNode* pnode : vNodes) {
+        //If the id on the node is equal to the id to evict
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         if (pnode->GetId() == *node_id_to_evict) {
+            //log the connection type being evicted and their id
             LogPrint(BCLog::NET, "selected %s connection for eviction peer=%d; disconnecting\n", pnode->ConnectionTypeAsString(), pnode->GetId());
+
+            //Set the disconnect flag to true
             pnode->fDisconnect = true;
+            //and return true
             return true;
         }
     }
+
+    //If the node wasn't found in vNodes, reurn false
     return false;
 }
 
@@ -1246,22 +1373,92 @@ void CConnman::SocketHandler()
     SocketHandlerListening(events_per_sock);
 }
 
+<<<<<<< HEAD
 void CConnman::SocketHandlerConnected(const std::vector<CNode*>& nodes,
                                       const Sock::EventsPerSock& events_per_sock)
 {
     AssertLockNotHeld(m_total_bytes_sent_mutex);
 
     for (CNode* pnode : nodes) {
+=======
+//RANDY_COMMENTED (revisit)
+//Populates sets of sockets using 'SocketEvents' function and adds the valid sockets in the recv_set that are also in 'vhListenSocket'.
+//Gets data from each node if it's in the recv_set or erorr_set and try to deserialize data for processing on every node. If no data was sent from the node or there's some other error, disconnect the nodes.
+//If the node is inactive, disconnect the node
+//If the node's socket is in the nodes of send_set, then send some data to those nodes
+void CConnman::SocketHandler()
+{
+    //Create lots of sets of sockets
+    std::set<SOCKET> recv_set, send_set, error_set;
+
+    //Call Socket events method on the set of sockets that represent receive, send, and error socket sets
+    SocketEvents(recv_set, send_set, error_set);
+
+    //If the turn-off-network flag is enabled, just return
+    if (interruptNet) return;
+
+    //BITCOIN_START
+    //
+    // Accept new connections
+    //
+    //BITCOIN_END
+
+    //For every  'ListenSocket' in 'vhListenSocket'
+    for (const ListenSocket& hListenSocket : vhListenSocket)
+    {
+        //If the socket in the object hListenSocket is valid and the receive set has the listen socket
+        if (hListenSocket.socket != INVALID_SOCKET && recv_set.count(hListenSocket.socket) > 0)
+        {
+            //Accept the connection from the listen socket
+            AcceptConnection(hListenSocket);
+        }
+    }
+
+    //BITCOIN_START
+    //
+    // Service each socket
+    //
+    //BITCOIN_END
+
+    //Create a vector that'll act as a vnodes copy
+    std::vector<CNode*> vNodesCopy;
+    {
+        //lock the vNodes vector carrying info of peers
+        LOCK(cs_vNodes);
+        //Copy over vector with assignment
+        vNodesCopy = vNodes;
+
+        //For every node in the vNodesCopy
+        for (CNode* pnode : vNodesCopy)
+            //Call 'AddRef' on the copied node reference.
+            //This increments a counter in the node that represents how many places it's actively being referenced
+            pnode->AddRef();
+    }
+
+    //For every node in the copy
+    for (CNode* pnode : vNodesCopy)
+    {
+        //If the flag to disconnect network, return
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         if (interruptNet)
             return;
 
+        //BITCOIN_START
         //
         // Receive
         //
+        //BITCOIN_END
+
+        //Initialize bool for receive set to false
         bool recvSet = false;
+        //Initialize bool for send set to false
         bool sendSet = false;
+        //Initialize bool for error set to false
         bool errorSet = false;
+
+        //Create a section to lock socket reference on node
         {
+<<<<<<< HEAD
             LOCK(pnode->m_sock_mutex);
             if (!pnode->m_sock) {
                 continue;
@@ -1272,73 +1469,166 @@ void CConnman::SocketHandlerConnected(const std::vector<CNode*>& nodes,
                 sendSet = it->second.occurred & Sock::SEND;
                 errorSet = it->second.occurred & Sock::ERR;
             }
+=======
+            //lock socket ref on node
+            LOCK(pnode->cs_hSocket);
+
+            //if the socket on the node is invalid, continue to next node
+            if (pnode->hSocket == INVALID_SOCKET)
+                continue;
+
+            //If receive set has the socket, set recvSet bool to true
+            recvSet = recv_set.count(pnode->hSocket) > 0;
+
+            //if send_set vector has the node, set this bool too
+            sendSet = send_set.count(pnode->hSocket) > 0;
+
+            //See if this node's socket is in the error set
+            errorSet = error_set.count(pnode->hSocket) > 0;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         }
+
+        //if the node info being processed has a socket in the receive or error set
         if (recvSet || errorSet)
         {
+            //BITCOIN_START
             // typical socket buffer is 8K-64K
+            //BITCOIN_END
+
+            //Make an array of uint8 to act as a buffer
             uint8_t pchBuf[0x10000];
+
+            //Set nBytes to 0 (count of bytes received from node socket)
             int nBytes = 0;
             {
+<<<<<<< HEAD
                 LOCK(pnode->m_sock_mutex);
                 if (!pnode->m_sock) {
                     continue;
                 }
                 nBytes = pnode->m_sock->Recv(pchBuf, sizeof(pchBuf), MSG_DONTWAIT);
+=======
+                //Lock the node's socket
+                LOCK(pnode->cs_hSocket);
+                //If the socket is invalid, continue
+                if (pnode->hSocket == INVALID_SOCKET)
+                    continue;
+
+                //Get all the bytes in the socket from that node
+                nBytes = recv(pnode->hSocket, (char*)pchBuf, sizeof(pchBuf), MSG_DONTWAIT);
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             }
+
+            //if some bytes were able to be received
             if (nBytes > 0)
             {
+                //Initialize notify to false
                 bool notify = false;
+<<<<<<< HEAD
                 if (!pnode->ReceiveMsgBytes({pchBuf, (size_t)nBytes}, notify)) {
                     pnode->CloseSocketDisconnect();
                 }
+=======
+
+                //I think: If not able to deserialize and save the data onto node with 'ReceiveMsgBytes' (revisit)
+                if (!pnode->ReceiveMsgBytes(Span<const uint8_t>(pchBuf, nBytes), notify))
+                    //Close the socket
+                    pnode->CloseSocketDisconnect();
+                //Record how many bytes retrieved from node
+>>>>>>> 38a46344c (Made some comments to help me understand.)
                 RecordBytesRecv(nBytes);
+
+                //If notify was set to true from node's ReceiveMsgBytes method
                 if (notify) {
+                    //Initialize sizeAdded to 0
+                    //This represents how much deserialized data we were able to get from the node
                     size_t nSizeAdded = 0;
+                    //Make an iterator starting at vRecvMsg (which I believe is deserialized messages)
                     auto it(pnode->vRecvMsg.begin());
+
+                    //For every 'CNetMessage' in the node's receive queue
                     for (; it != pnode->vRecvMsg.end(); ++it) {
+
+                        //BITCOIN_START
                         // vRecvMsg contains only completed CNetMessage
                         // the single possible partially deserialized message are held by TransportDeserializer
+                        //BITCOIN_END
+
+                        //Add the message size
                         nSizeAdded += it->m_raw_message_size;
                     }
                     {
+                        //Lock the processMsg on queue
                         LOCK(pnode->cs_vProcessMsg);
-                        pnode->vProcessMsg.splice(pnode->vProcessMsg.end(), pnode->vRecvMsg, pnode->vRecvMsg.begin(), it);
+                        //Adds the items from vRecvMsg to vProcessMsg to get processed starting from beginning to where end iterator should be('it' should equal vRecvMsg.end() here)
+                        pnode->vProcessMsg.splice(pnode->vProcessMsg.end(), pnode->vRecvMsg,
+                        pnode->vRecvMsg.begin(), it);
+
+                        //The queue to be processed has its size increased by data received from the node just processed
                         pnode->nProcessQueueSize += nSizeAdded;
+
+                        //Let the pauseRecv flag on the node be triggered if the the things in the queue is bigger than the receive flood size
                         pnode->fPauseRecv = pnode->nProcessQueueSize > nReceiveFloodSize;
                     }
+                    //Start processing the messages? (revisit)
                     WakeMessageHandler();
                 }
             }
+            //If there's no bytes to receive
             else if (nBytes == 0)
             {
+                //BITOIN_START
                 // socket closed gracefully
+                //BITCOIN_END
+                //Log if the node is not yet disconnected
                 if (!pnode->fDisconnect) {
                     LogPrint(BCLog::NET, "socket closed for peer=%d\n", pnode->GetId());
                 }
+
+                //Disconnect node since there's nothing it's giving us
                 pnode->CloseSocketDisconnect();
             }
+
+            //If the bytes received is less than 0 it's just in error
             else if (nBytes < 0)
             {
+                //BITCOIN_START
                 // error
+                //BITCOIN_END
+
+                //Get last error code as integer
                 int nErr = WSAGetLastError();
+
+                //If the error code isn't one that can be recovered? (revisit)
                 if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
                 {
+                    //Log if the node hasn't been disconnected already
                     if (!pnode->fDisconnect) {
                         LogPrint(BCLog::NET, "socket recv error for peer=%d: %s\n", pnode->GetId(), NetworkErrorString(nErr));
                     }
+
+                    //Disconnect the node
                     pnode->CloseSocketDisconnect();
                 }
             }
         }
 
+        //If any sockes for nodes in VNodes are in the sendSet
         if (sendSet) {
+            //BITCOIN_START
             // Send data
+            //BITCOIN_END
+
+            // lock the send buffer and send the data from that node
             size_t bytes_sent = WITH_LOCK(pnode->cs_vSend, return SocketSendData(*pnode));
+            //Record bytes sent if non-zero
             if (bytes_sent) RecordBytesSent(bytes_sent);
         }
 
+        //If the nodes are inactive, disconnect them
         if (InactivityCheck(*pnode)) pnode->fDisconnect = true;
     }
+<<<<<<< HEAD
 }
 
 void CConnman::SocketHandlerListening(const Sock::EventsPerSock& events_per_sock)
@@ -1351,18 +1641,37 @@ void CConnman::SocketHandlerListening(const Sock::EventsPerSock& events_per_sock
         if (it != events_per_sock.end() && it->second.occurred & Sock::RECV) {
             AcceptConnection(listen_socket);
         }
+=======
+    {
+        //Lock the vNodes array
+        LOCK(cs_vNodes);
+        //For every node in the node copy
+        for (CNode* pnode : vNodesCopy)
+            //call release on them (opposite of 'AddRef'?) (revisit)
+            pnode->Release();
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     }
 }
 
+//RANDY_COMMENTED (revisit)
 void CConnman::ThreadSocketHandler()
 {
+<<<<<<< HEAD
     AssertLockNotHeld(m_total_bytes_sent_mutex);
 
     SetSyscallSandboxPolicy(SyscallSandboxPolicy::NET);
+=======
+    //As long as flag to stop networking activity isnt true
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     while (!interruptNet)
     {
+        //Disconect nodes
         DisconnectNodes();
+
+        //Notify something about any disconnected nodes
         NotifyNumConnectionsChanged();
+
+        //Call socket handler
         SocketHandler();
     }
 }
@@ -1376,25 +1685,57 @@ void CConnman::WakeMessageHandler()
     condMsgProc.notify_one();
 }
 
+//TODO: COMMENT
+//RANDY_COMMENT
+//Try to see if we should use all seeds vs sleectively pulling some to use.
+//Look to see if nodes we have can be used as seeds
+//If we have a name proxy or 'LookupHost' doesn't work, call 'AddAddrFetch'
+//If 'LookupHost' does work, collect ips from DNS seeds
 void CConnman::ThreadDNSAddressSeed()
 {
     SetSyscallSandboxPolicy(SyscallSandboxPolicy::INITIALIZATION_DNS_SEED);
     FastRandomContext rng;
+
+    //Create a vector of strings and call it seeds.
+    //Set it to 'Params().DNSSeeds();'
+    //Params is a function that returns the global 'globalChainParams' of type CChainParams
     std::vector<std::string> seeds = Params().DNSSeeds();
+
+    //Every elements successively gets swapped with a random element
     Shuffle(seeds.begin(), seeds.end(), rng);
-    int seeds_right_now = 0; // Number of seeds left before testing if we have enough connections
+
+
+    //BITCOIN_START
+    // Number of seeds left before testing if we have enough connections
+    //BITCOIN_END
+
+    //Current number of seeds
+    int seeds_right_now = 0;
+
+    //number of seeds found
     int found = 0;
 
+    //If the bitcoind arg forcedDnsSeed is true
     if (gArgs.GetBoolArg("-forcednsseed", DEFAULT_FORCEDNSSEED)) {
+        //BITCOIN_START
         // When -forcednsseed is provided, query all.
+        //BITCOIN_END
+
+        //Set seeds right now to the total number of seeds in 'seeds'
         seeds_right_now = seeds.size();
     } else if (addrman.size() == 0) {
+
+        //Even if the forcedDnsSeed isn't truw, iff the addrman.size is 0, then set seeds_right_now to 'seeds' size
+
+        //BITCOIN_START
         // If we have no known peers, query all.
         // This will occur on the first run, or if peers.dat has been
         // deleted.
+        //BITCOIN_END
         seeds_right_now = seeds.size();
     }
 
+    //BITCOIN_START
     // goal: only query DNS seed if address need is acute
     // * If we have a reasonable number of peers in addrman, spend
     //   some time trying them first. This improves user privacy by
@@ -1407,78 +1748,153 @@ void CConnman::ThreadDNSAddressSeed()
     // * If we continue having problems, eventually query all the
     //   DNS seeds, and if that fails too, also try the fixed seeds.
     //   (done in ThreadOpenConnections)
+    //BITCOIN_END
+
+    //Creae time value to represent a delay who's length depends on how many peers are detected
     const std::chrono::seconds seeds_wait_time = (addrman.size() >= DNSSEEDS_DELAY_PEER_THRESHOLD ? DNSSEEDS_DELAY_MANY_PEERS : DNSSEEDS_DELAY_FEW_PEERS);
 
+    //For each string seed in 'seeds'
     for (const std::string& seed : seeds) {
+
+        //If seeds right now is 0
         if (seeds_right_now == 0) {
+            //Add the count of dns seeds we're about to query
             seeds_right_now += DNSSEEDS_TO_QUERY_AT_ONCE;
 
+            //if addrman is bigger than 0 (i think represents 'peers')
             if (addrman.size() > 0) {
+                //log
                 LogPrintf("Waiting %d seconds before querying DNS seeds.\n", seeds_wait_time.count());
+                //Add onto seeds_wait_time
                 std::chrono::seconds to_wait = seeds_wait_time;
+
+                //while seed wait time is greater than 0
                 while (to_wait.count() > 0) {
+                    //BITCOIN_START
                     // if sleeping for the MANY_PEERS interval, wake up
                     // early to see if we have enough peers and can stop
                     // this thread entirely freeing up its resources
+                    //BITCOIN_END
+
+                    //Keep trying to sleep for whatever is less, the delay time for few peers or original wait time
                     std::chrono::seconds w = std::min(DNSSEEDS_DELAY_FEW_PEERS, to_wait);
                     if (!interruptNet.sleep_for(w)) return;
+
+                    //Subtract the time waited from wait time
                     to_wait -= w;
 
+                    //Set relevant to 0
                     int nRelevant = 0;
                     {
+<<<<<<< HEAD
                         LOCK(m_nodes_mutex);
                         for (const CNode* pnode : m_nodes) {
                             if (pnode->fSuccessfullyConnected && pnode->IsFullOutboundConn()) ++nRelevant;
+=======
+                        //Lock the vNodes vector
+                        LOCK(cs_vNodes);
+                        //For every node in vNodes
+                        for (const CNode* pnode : vNodes) {
+                            //if the node we're looking at is successfully connected to us and
+                            //the connection is outbound or blockrelay
+                            if (pnode->fSuccessfullyConnected && pnode->IsOutboundOrBlockRelayConn())
+                                //Add one to relevant
+                                ++nRelevant;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
                         }
                     }
+                    //If 2 or more nodes have been marked as relevant
                     if (nRelevant >= 2) {
+                        //If we've found more than one seed
                         if (found > 0) {
+                            //Print that how any we've found
                             LogPrintf("%d addresses found from DNS seeds\n", found);
                             LogPrintf("P2P peers available. Finished DNS seeding.\n");
                         } else {
                             LogPrintf("P2P peers available. Skipped DNS seeding.\n");
                         }
+
+                        //End the DNS seed search
                         return;
                     }
                 }
             }
         }
 
+        //If network flag is turned off, return
         if (interruptNet) return;
 
+        //BITCOIN_START
         // hold off on querying seeds if P2P network deactivated
+        //BITCOIN_END
+
+        //If the network is not active
         if (!fNetworkActive) {
+            //log
             LogPrintf("Waiting for network to be reactivated before querying DNS seeds.\n");
             do {
+                //If the flag to turn off the network is still on then sleep until the network is active again
                 if (!interruptNet.sleep_for(std::chrono::seconds{1})) return;
             } while (!fNetworkActive);
         }
 
+        //log that we're going to look for addressed from DNS seed
         LogPrintf("Loading addresses from DNS seed %s\n", seed);
+
+        //If the static variable 'nameProxy' is valud
         if (HaveNameProxy()) {
+            //Add the seed we're looking at to 'm_addr_fetches'
             AddAddrFetch(seed);
         } else {
+            //if we have no name proxy
+
+            //Create a vector of ips
             std::vector<CNetAddr> vIPs;
+
+            //Create a vector of abstract address objects
             std::vector<CAddress> vAdd;
+
+            //Idk what this is (revisit)
             ServiceFlags requiredServiceBits = GetDesirableServiceFlags(NODE_NONE);
+
+            //Set host to tje seed with some prefix using the 'requiredServiceBits'
             std::string host = strprintf("x%x.%s", requiredServiceBits, seed);
+
+            //Create an address called 'resolveSource'
             CNetAddr resolveSource;
+
+            //If the resolveAddress isn't able to be set to the host added
             if (!resolveSource.SetInternal(host)) {
+                //then continue
                 continue;
             }
-            unsigned int nMaxIPs = 256; // Limits number of IPs learned from a DNS seed
+            //Set maxIps to 256 which the comment says limits the ips we can learn from one dns url
+            unsigned int nMaxIPs = 256; //B // Limits number of IPs learned from a DNS seed //B_END
+            //If we're able to successfully look up the dns host
             if (LookupHost(host, vIPs, nMaxIPs, true)) {
+                //for every ip returned for what I imagine is a DNS A record
                 for (const CNetAddr& ip : vIPs) {
+                    //Get one day in seconds
                     int nOneDay = 24*3600;
+                    //Create an address object with that ip
                     CAddress addr = CAddress(CService(ip, Params().GetDefaultPort()), requiredServiceBits);
-                    addr.nTime = GetTime() - 3*nOneDay - rng.randrange(4*nOneDay); // use a random age between 3 and 7 days old
+                    //Set the time on that address to the current time and subtract somewhere between 3 days and 7 days
+                    addr.nTime = GetTime() - 3*nOneDay - rng.randrange(4*nOneDay);//B // use a random age between 3 and 7 days old //B_END
+
+                    //Add the  the address to vAdd
                     vAdd.push_back(addr);
+                    //Add onto found ip
                     found++;
                 }
+                //Add the ips to addrman with the associated DNS name
                 addrman.Add(vAdd, resolveSource);
             } else {
+                //BITCOIN_START
                 // We now avoid directly using results from DNS Seeds which do not support service bit filtering,
                 // instead using them as a addrfetch to get nodes with our desired service bits.
+                //BITCOIN_END
+
+                //From what I undertsand about the comment, this case occurs when the DNS seed doesn't support whaever addressing format that was being used. Instead we use it to call 'AddAddreFetch'
                 AddAddrFetch(seed);
             }
         }
@@ -1565,6 +1981,8 @@ int CConnman::GetExtraBlockRelayCount() const
     return std::max(block_relay_peers - m_max_outbound_block_relay, 0);
 }
 
+//RANDY_COMMENT
+//TODO: COMMENT
 void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
 {
     SetSyscallSandboxPolicy(SyscallSandboxPolicy::NET_OPEN_CONNECTION);
@@ -1930,6 +2348,8 @@ void CConnman::ThreadOpenAddedConnections()
     }
 }
 
+//RANDY COMMENT
+//TODO: COMMENT
 // if successful, this moves the passed grant to the constructed node
 void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFailure, CSemaphoreGrant *grantOutbound, const char *pszDest, ConnectionType conn_type)
 {

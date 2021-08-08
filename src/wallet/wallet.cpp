@@ -55,14 +55,25 @@ const std::map<uint64_t,std::string> WALLET_FLAG_CAVEATS{
     },
 };
 
+//RANDY_COMMENTED
+//Looks throught the 'wallet' rw setting array to see if the 'walletName' is in it. Returns true if it's already been added or if it was able to successfully get added to the settings.
 bool AddWalletSetting(interfaces::Chain& chain, const std::string& wallet_name)
 {
+    //Create  a settings value variable and get a seting from the chain parameter
     util::SettingsValue setting_value = chain.getRwSetting("wallet");
+    //If the setting value is not an array, then set an array.
     if (!setting_value.isArray()) setting_value.setArray();
+
+    //For every settings value in the setting value array retrieved
     for (const util::SettingsValue& value : setting_value.getValues()) {
+        //If the value in the array is a string and is equal to the wallet name in parameter, return true
         if (value.isStr() && value.get_str() == wallet_name) return true;
     }
+
+    //Add the wallet name to the setting value if no value in the setting value's array was equal to the name
     setting_value.push_back(wallet_name);
+
+    //Update the the wallet to have the new walllet name as a setting value in the array
     return chain.updateRwSetting("wallet", setting_value);
 }
 
@@ -105,6 +116,8 @@ static void RefreshMempoolStatus(CWalletTx& tx, interfaces::Chain& chain)
     }
 }
 
+//TODO: RANDY_COMMENT
+//CHECKPOINT
 bool AddWallet(WalletContext& context, const std::shared_ptr<CWallet>& wallet)
 {
     LOCK(context.wallets_mutex);
@@ -268,35 +281,57 @@ std::shared_ptr<CWallet> LoadWallet(WalletContext& context, const std::string& n
     return wallet;
 }
 
+//RANDY_COMMENTED
+//Create a wallet using CWallet::Create,  encrypt, unlock, and lock the wallet thereafter before making a call to AddWallet and postInitProcess/
 std::shared_ptr<CWallet> CreateWallet(WalletContext& context, const std::string& name, std::optional<bool> load_on_start, DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error, std::vector<bilingual_str>& warnings)
 {
+    //Get any wallet creation flags
     uint64_t wallet_creation_flags = options.create_flags;
+
+    //Create a secure string for the 'create_passphrase'
     const SecureString& passphrase = options.create_passphrase;
 
+    //From comment of 'WALLET_FLAG_DESCRIPTORS', this checks if the bit for 'DescriptorScriptPubKeyMan' is true and the body of the condition will change the database format to sqllite
     if (wallet_creation_flags & WALLET_FLAG_DESCRIPTORS) options.require_format = DatabaseFormat::SQLITE;
 
+    //BITCOIN_START
     // Indicate that the wallet is actually supposed to be blank and not just blank to make it encrypted
+    //BITCOIN_END
+    //Check flags to see if the wallet should be blank
     bool create_blank = (wallet_creation_flags & WALLET_FLAG_BLANK_WALLET);
 
+    //BITCOIN_START
     // Born encrypted wallets need to be created blank first.
+    //BITCOIN_END
+    //If the passphrase is not empty
     if (!passphrase.empty()) {
+        //Unconditionally add the flag for making a blank wallet (by using bitwise or with 'WALLET_FLAG_BLANK_WALLET' which has a 1 bit in the appropriate position)
         wallet_creation_flags |= WALLET_FLAG_BLANK_WALLET;
     }
 
+    //BITCOIN_START
     // Private keys must be disabled for an external signer wallet
+    //BITCOIN_END
+
+    //Error if the external signer flag is on and the private keys aren't disabled for creation
     if ((wallet_creation_flags & WALLET_FLAG_EXTERNAL_SIGNER) && !(wallet_creation_flags & WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         error = Untranslated("Private keys must be disabled when using an external signer");
         status = DatabaseStatus::FAILED_CREATE;
         return nullptr;
     }
 
+    //B_S
     // Descriptor support must be enabled for an external signer wallet
+    //B_E
+
+    //Error out if external signer and there's no flag descriptos in creation flags
     if ((wallet_creation_flags & WALLET_FLAG_EXTERNAL_SIGNER) && !(wallet_creation_flags & WALLET_FLAG_DESCRIPTORS)) {
         error = Untranslated("Descriptor support must be enabled when using an external signer");
         status = DatabaseStatus::FAILED_CREATE;
         return nullptr;
     }
 
+    //B_START
     // Do not allow a passphrase when private keys are disabled
     if (!passphrase.empty() && (wallet_creation_flags & WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         error = Untranslated("Passphrase provided but private keys are disabled. A passphrase is only used to encrypt private keys, so cannot be used for wallets with private keys disabled.");
@@ -304,8 +339,14 @@ std::shared_ptr<CWallet> CreateWallet(WalletContext& context, const std::string&
         return nullptr;
     }
 
+    //B_END
     // Wallet::Verify will check if we're trying to create a wallet with a duplicate name.
+    //B_E
+
+    //Create a 'Wallet Database' using 'name'
     std::unique_ptr<WalletDatabase> database = MakeWalletDatabase(name, options, status, error);
+
+    //If the database wasn't able to be completed, error out because the wallet file was unable to be verified
     if (!database) {
         error = Untranslated("Wallet file verification failed.") + Untranslated(" ") + error;
         status = DatabaseStatus::FAILED_VERIFY;
@@ -314,35 +355,59 @@ std::shared_ptr<CWallet> CreateWallet(WalletContext& context, const std::string&
 
     // Make the wallet
     context.chain->initMessage(_("Loading wallet…").translated);
+    //Create a wallet using the chain and name in the parameter, along with walletdb and other creation flags
     const std::shared_ptr<CWallet> wallet = CWallet::Create(context, name, std::move(database), wallet_creation_flags, error, warnings);
+    //If the wallet isn't defined, the creation failed
     if (!wallet) {
         error = Untranslated("Wallet creation failed.") + Untranslated(" ") + error;
         status = DatabaseStatus::FAILED_CREATE;
         return nullptr;
     }
 
+    //B
     // Encrypt the wallet
+    //B_E
+
+    //If the passphrase is defined and the private keys are not disabled
     if (!passphrase.empty() && !(wallet_creation_flags & WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+
+        //Encrypt the wallet with passphrase and error out otherwise
         if (!wallet->EncryptWallet(passphrase)) {
             error = Untranslated("Error: Wallet created but failed to encrypt.");
             status = DatabaseStatus::FAILED_ENCRYPT;
             return nullptr;
         }
+
+        //If the blank flag is not present
         if (!create_blank) {
+            //BITCOIN_S
             // Unlock the wallet
+            //BITCOIN_E
+
+            //Try to unlock the wallet with the passphrase, error out otherwise
             if (!wallet->Unlock(passphrase)) {
                 error = Untranslated("Error: Wallet was encrypted but could not be unlocked");
                 status = DatabaseStatus::FAILED_ENCRYPT;
                 return nullptr;
             }
 
+            //B
             // Set a seed for the wallet
+            //B_E
             {
+
+                //Lock the wallet using cs_wallet property
                 LOCK(wallet->cs_wallet);
+
+                //If the wallet has the flag ddescriptors set
                 if (wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                    //Setup 'descriptor pub key mans'?
                     wallet->SetupDescriptorScriptPubKeyMans();
                 } else {
+
+                    //For every 'script pub key man' in the wallet's active spbkm
                     for (auto spk_man : wallet->GetActiveScriptPubKeyMans()) {
+                        //If the script pub key couldn't setup generation error out
                         if (!spk_man->SetupGeneration()) {
                             error = Untranslated("Unable to generate initial keys");
                             status = DatabaseStatus::FAILED_CREATE;
@@ -351,16 +416,25 @@ std::shared_ptr<CWallet> CreateWallet(WalletContext& context, const std::string&
                     }
                 }
             }
-
+            //B
             // Relock the wallet
+            //B_E
+
+            //Lock the wallet which is a little mroe logic than lock(cs_wallet)
             wallet->Lock();
         }
     }
 
+    //S_START
+    //CHECKPOINT
     NotifyWalletLoaded(context, wallet);
+    //S_END
+
+    //Adds the wallet
     AddWallet(context, wallet);
     wallet->postInitProcess();
 
+    //S
     // Write the wallet settings
     UpdateWalletSetting(*context.chain, name, load_on_start, warnings);
 
@@ -368,8 +442,14 @@ std::shared_ptr<CWallet> CreateWallet(WalletContext& context, const std::string&
     if (!(wallet_creation_flags & WALLET_FLAG_DESCRIPTORS)) {
         warnings.push_back(_("Wallet created successfully. The legacy wallet type is being deprecated and support for creating and opening legacy wallets will be removed in the future."));
     }
+    //S_END
 
+    //Validates things using load_on_startup in parameter
+    UpdateWalletSetting(chain, name, load_on_start, warnings);
+Set the database status as successful
     status = DatabaseStatus::SUCCESS;
+
+    //return the wallet.
     return wallet;
 }
 

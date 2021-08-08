@@ -464,9 +464,12 @@ CTxMemPool::CTxMemPool(const Options& opts)
     _clear(); //lock free clear
 }
 
+//RANDY_COMMENTED
 bool CTxMemPool::isSpent(const COutPoint& outpoint) const
 {
+    //lock cs
     LOCK(cs);
+    //Return whether we have found the output being checked in mapNextTx (meaning a spend input is associated with the received output)
     return mapNextTx.count(outpoint);
 }
 
@@ -719,69 +722,201 @@ void CTxMemPool::clear()
     _clear();
 }
 
+<<<<<<< HEAD
 void CTxMemPool::check(const CCoinsViewCache& active_coins_tip, int64_t spendheight) const
+=======
+static void CheckInputsAndUpdateCoins(const CTransaction& tx, CCoinsViewCache& mempoolDuplicate, const int64_t spendheight)
 {
+    TxValidationState dummy_state; // Not used. CheckTxInputs() should always pass
+    CAmount txfee = 0;
+    bool fCheckResult = tx.IsCoinBase() || Consensus::CheckTxInputs(tx, dummy_state, mempoolDuplicate, spendheight, txfee);
+    assert(fCheckResult);
+    UpdateCoins(tx, mempoolDuplicate, std::numeric_limits<int>::max());
+}
+
+//RANDY_COMMENTED
+//Iterates through all transactions in the mempool and adds their input transactions to setParents (the set of input transactions for the transactions in the mempool) and verifies the input transactions points to the right thing in mapTransactionNext. Get all ancestors (using 'CalculateMemPoolAncestors' on ) and make sure transaction methods related with ancestor calculation is correct. Then make sure that any transactions dependent on another transaction didn't have their transactions added to mempool, and that all the parent transactions in mapNextTx point to valid children.
+void CTxMemPool::check(CChainState& active_chainstate) const
+>>>>>>> 38a46344c (Made some comments to help me understand.)
+{
+    //If m_check_ratio is 0, exit
+    //REVISIT (I don't know what m_check_ratio is)
     if (m_check_ratio == 0) return;
 
+    //If a random number within the bounds of m_check_ratio is bigger than 1,
+    //return
     if (GetRand(m_check_ratio) >= 1) return;
 
+    //Make sure we have a lock held for main thread
     AssertLockHeld(::cs_main);
+    //Lock cs
     LOCK(cs);
+    //Logging that we're hecking the mempool of local transactions
     LogPrint(BCLog::MEMPOOL, "Checking mempool with %u transactions and %u inputs\n", (unsigned int)mapTx.size(), (unsigned int)mapNextTx.size());
 
+    //Initialize checkTotal to 0
     uint64_t checkTotal = 0;
+
+    //Initialize checkTotalFee to 0
     CAmount check_total_fee{0};
+
+    //Initialize innerUsage to 0
     uint64_t innerUsage = 0;
     uint64_t prev_ancestor_count{0};
 
+<<<<<<< HEAD
     CCoinsViewCache mempoolDuplicate(const_cast<CCoinsViewCache*>(&active_coins_tip));
 
     for (const auto& it : GetSortedDepthAndScore()) {
+=======
+    //Get the chaintate property 'CoinsTip' and store it in 'active_coins_tip'
+    CCoinsViewCache& active_coins_tip = active_chainstate.CoinsTip();
+
+    //Assert that the address of the coinstip is the same as the address of the variable we just assigned it to
+    assert(std::addressof(::ChainstateActive().CoinsTip()) == std::addressof(active_coins_tip)); // TODO: REVIEW-ONLY, REMOVE IN FUTURE COMMIT
+
+    //Make a CCoinsViewCache that takes in the activecoins tip (which is also a CCoinsViewCache)
+    CCoinsViewCache mempoolDuplicate(const_cast<CCoinsViewCache*>(&active_coins_tip));
+
+    //Spend height is equal to the chainstate's height plus one
+    const int64_t spendheight = active_chainstate.m_chain.Height() + 1;
+
+    //Make sure the height we get from the chainstate is the same that we get from the coin view cache that is mempoolDuplicate. Make sure info derived from active_chainstate's coinstip is the same as info that can be derived from active_chainstate's height?
+    assert(g_chainman.m_blockman.GetSpendHeight(mempoolDuplicate) == spendheight); // TODO: REVIEW-ONLY, REMOVE IN FUTURE COMMIT
+
+    //Create a list of mempool entries
+    std::list<const CTxMemPoolEntry*> waitingOnDependants;
+
+    //For every transaction in the mempool
+    for (indexed_transaction_set::const_iterator it = mapTx.begin(); it != mapTx.end(); it++) {
+        //Initialize an int i
+        unsigned int i = 0;
+
+        //Get the size of the transaction
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         checkTotal += it->GetTxSize();
+        //Get the fee of the transaction
         check_total_fee += it->GetFee();
+        //Get the memory usage
         innerUsage += it->DynamicMemoryUsage();
+
+        //Get the transaction details
         const CTransaction& tx = it->GetTx();
+
+        //Get the size of it's parent and children transactions (transatcions that funded this, and transaction funded by this respectively) and add it to memory usage
         innerUsage += memusage::DynamicUsage(it->GetMemPoolParentsConst()) + memusage::DynamicUsage(it->GetMemPoolChildrenConst());
+<<<<<<< HEAD
+=======
+
+        //Set dependsWait to false
+        bool fDependsWait = false;
+
+        //Make a mem pool entry
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         CTxMemPoolEntry::Parents setParentCheck;
+
+        //For every input in transaction
         for (const CTxIn &txin : tx.vin) {
+
+            //BITCOIN_START
             // Check that every mempool transaction's inputs refer to available coins, or other mempool tx's.
+            //BITCOIN_END
+
+            //Find the indexed transaction in the mempool
             indexed_transaction_set::const_iterator it2 = mapTx.find(txin.prevout.hash);
+
+            //If the iterator isn't equal to the map end (the input was found)
             if (it2 != mapTx.end()) {
+                //Get the transaction details from the iterator
                 const CTransaction& tx2 = it2->GetTx();
+
+                //Assert the size of the source transaction outputs is less than the index specified by the subsequent spending input and that the output in source transaction at that index is non-null
                 assert(tx2.vout.size() > txin.prevout.n && !tx2.vout[txin.prevout.n].IsNull());
+<<<<<<< HEAD
                 setParentCheck.insert(*it2);
             }
             // We are iterating through the mempool entries sorted in order by ancestor count.
             // All parents must have been checked before their children and their coins added to
             // the mempoolDuplicate coins cache.
             assert(mempoolDuplicate.HaveCoin(txin.prevout));
+=======
+
+                //Set dependsWait to true
+                fDependsWait = true;
+                //Add source indexed transaction to 'setParentCheck'
+                setParentCheck.insert(*it2);
+            } else {
+                //If not found, assert that the current chain's top at least has the coin
+                assert(active_coins_tip.HaveCoin(txin.prevout));
+            }
+            //BITCOIN_START
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             // Check whether its inputs are marked in mapNextTx.
+            //BITCOIN_END
+
+            //Find the transaction that used the input i nmapNextTx (which should be the transaction we're iterating on)
             auto it3 = mapNextTx.find(txin.prevout);
+
+            //Assert we could find it (so the iterator isn't equal tot he end of mapNextTx)
             assert(it3 != mapNextTx.end());
+
+            //Assert the first index in this presumed tuple is the prevout of the transaction used in the 'find' call above
             assert(it3->first == &txin.prevout);
+
+            //Asser the transaction found is equal to the transaction we're iterating on in the top-level for-loop
             assert(it3->second == &tx);
+<<<<<<< HEAD
+=======
+            //increment i
+            i++;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         }
+        //Create a comparator lambda ythat takes in 2 mem pool entries and returns whether their transaction hashes are equal
         auto comp = [](const CTxMemPoolEntry& a, const CTxMemPoolEntry& b) -> bool {
             return a.GetTx().GetHash() == b.GetTx().GetHash();
         };
+        //Assert that setParentCheck (the set of input transactions in the mempool) has the same size as the transaction's GetMemPoolParentsConst return value
         assert(setParentCheck.size() == it->GetMemPoolParentsConst().size());
+
+        //Assert that all elements in array are equal
         assert(std::equal(setParentCheck.begin(), setParentCheck.end(), it->GetMemPoolParentsConst().begin(), comp));
+
+        //BITCOIN_START
         // Verify ancestor state is correct.
+        //BITCOIN_END
+
+        //Create a set of ancestors
         setEntries setAncestors;
+
+        //Create an unsigned int representing the max value
         uint64_t nNoLimit = std::numeric_limits<uint64_t>::max();
+
+        //create a string called dummy
         std::string dummy;
+
+        //Put the mempool ancestors of given transaction in setAncestors
         CalculateMemPoolAncestors(*it, setAncestors, nNoLimit, nNoLimit, nNoLimit, nNoLimit, dummy);
+
+        //Get the size of setAncestors
         uint64_t nCountCheck = setAncestors.size() + 1;
+
+        //Get the size of the transaction
         uint64_t nSizeCheck = it->GetTxSize();
+
+        //Get the modified fee
         CAmount nFeesCheck = it->GetModifiedFee();
+
+        //Ge the sig op cost
         int64_t nSigOpCheck = it->GetSigOpCost();
 
+        //Accumulate the size , fees, etc for every ancestor in nSizeCheck, nFeesCheck, etc
         for (txiter ancestorIt : setAncestors) {
             nSizeCheck += ancestorIt->GetTxSize();
             nFeesCheck += ancestorIt->GetModifiedFee();
             nSigOpCheck += ancestorIt->GetSigOpCost();
         }
 
+        //Make sure the transaction methods return the right values (this seems like it should belong in a test)
         assert(it->GetCountWithAncestors() == nCountCheck);
         assert(it->GetSizeWithAncestors() == nSizeCheck);
         assert(it->GetSigOpCostWithAncestors() == nSigOpCheck);
@@ -790,40 +925,124 @@ void CTxMemPool::check(const CCoinsViewCache& active_coins_tip, int64_t spendhei
         assert(prev_ancestor_count <= it->GetCountWithAncestors());
         prev_ancestor_count = it->GetCountWithAncestors();
 
+        //BITCOIN_START
         // Check children against mapNextTx
+        //BITCOIN_END
+
+        //Create a mempool entry 'children' type (std::set<CTxMemPoolEntryRef, CompareIteratorByHash>) called setChildrenCheck
         CTxMemPoolEntry::Children setChildrenCheck;
+
+        //Set the iterator 'iter' to where the earliest indexed transaction that utilizes the COutPoint as input is located in mapNextTx
         auto iter = mapNextTx.lower_bound(COutPoint(it->GetTx().GetHash(), 0));
+
+        //Set child_sizes to 0
         uint64_t child_sizes = 0;
+
+        //For every transaction that used the current transaction
         for (; iter != mapNextTx.end() && iter->first->hash == it->GetTx().GetHash(); ++iter) {
+            //Get the transaction in 'mapTx'
             txiter childit = mapTx.find(iter->second->GetHash());
-            assert(childit != mapTx.end()); // mapNextTx points to in-mempool transactions
+
+            //Assert that it was found
+            //BITCOIN_START
+            // mapNextTx points to in-mempool transactions
+            //BITCOIN_END
+            assert(childit != mapTx.end());
+
+            //Add the children
             if (setChildrenCheck.insert(*childit).second) {
+                //Add child size
                 child_sizes += childit->GetTxSize();
             }
         }
+        //assert the children size equals the calculated children size of tranaction method
         assert(setChildrenCheck.size() == it->GetMemPoolChildrenConst().size());
+
+        //Assert every transaction is the same
         assert(std::equal(setChildrenCheck.begin(), setChildrenCheck.end(), it->GetMemPoolChildrenConst().begin(), comp));
+
+        //BITCOIN_START
         // Also check to make sure size is greater than sum with immediate children.
         // just a sanity check, not definitive that this calc is correct...
+        //BITCOIN_END
+
+        //Assert descendendants method is greater han child sizes with current transaction size (since descendants encompass more than just children?)
         assert(it->GetSizeWithDescendants() >= child_sizes + it->GetTxSize());
 
+<<<<<<< HEAD
         TxValidationState dummy_state; // Not used. CheckTxInputs() should always pass
         CAmount txfee = 0;
         assert(!tx.IsCoinBase());
         assert(Consensus::CheckTxInputs(tx, dummy_state, mempoolDuplicate, spendheight, txfee));
         for (const auto& input: tx.vin) mempoolDuplicate.SpendCoin(input.prevout);
         AddCoins(mempoolDuplicate, tx, std::numeric_limits<int>::max());
+=======
+        //if depends wait is true
+        if (fDependsWait)
+            //add the current transaction to 'waitingOnDependents'
+            waitingOnDependants.push_back(&(*it));
+        else {
+            //Otherwise checkInputsAndUpdateCoins
+            CheckInputsAndUpdateCoins(tx, mempoolDuplicate, spendheight);
+        }
     }
+
+    //Initialize stepsSinceLastRemove to 0 (this represents how many elements were skipped consecutively at a certain iteration in the while-loop below)
+    unsigned int stepsSinceLastRemove = 0;
+
+    //While we still have elements in waitingonDependents
+    while (!waitingOnDependants.empty()) {
+        //Initialize a mempool entry to the first element on waitingOnDependents
+        const CTxMemPoolEntry* entry = waitingOnDependants.front();
+
+        //Remove the mempool entry from waitingOnDependants
+        waitingOnDependants.pop_front();
+
+        //If the mempool duplocates doesn't have the inputs for the transaction just popped from the beginning of waitingOnDependents
+        if (!mempoolDuplicate.HaveInputs(entry->GetTx())) {
+            //Add the entry back to waitingOnDependents
+            waitingOnDependants.push_back(entry);
+            //Increment the stepsSinceLastRemove
+            stepsSinceLastRemove++;
+
+            //Assert that the steps since the last removal is less than the size of waitingOnDependants (this assertion fails when all elements consecutively fail to be removed)
+            assert(stepsSinceLastRemove < waitingOnDependants.size());
+        } else {
+            //If the mempoolDuplicate does have the inputs for the transaction waiting on dependents, the checkInputs and update coind
+            CheckInputsAndUpdateCoins(entry->GetTx(), mempoolDuplicate, spendheight);
+
+            //Set the stepsSinceLastRemove to 0
+            stepsSinceLastRemove = 0;
+        }
+>>>>>>> 38a46344c (Made some comments to help me understand.)
+    }
+
+    //for all elements in mapNextTx
     for (auto it = mapNextTx.cbegin(); it != mapNextTx.cend(); it++) {
+
+        //Get the hash of the second element (the child transaction for a parent)
         uint256 hash = it->second->GetHash();
+
+        //Find the hash in mapTx and get a transaction-set iterator returned
         indexed_transaction_set::const_iterator it2 = mapTx.find(hash);
+
+        //Get the transaction from transaction set
         const CTransaction& tx = it2->GetTx();
+
+        //assert that the transaction set iterator isn't at the end of mapTx
         assert(it2 != mapTx.end());
+
+        //Assert that the address of the child transaction retrieved from mempool is equal to the address stored in the parent-transaction-to-child map
         assert(&tx == it->second);
     }
 
+    //assert that the total transaction size is equal to checkTotal
     assert(totalTxSize == checkTotal);
+
+    //That the total fee is equal to check_total_fee
     assert(m_total_fee == check_total_fee);
+
+    //And that the innerUsage is equal to the cachedInnerUsage
     assert(innerUsage == cachedInnerUsage);
 }
 

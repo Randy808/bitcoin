@@ -109,25 +109,43 @@ int fork_daemon(bool nochdir, bool noclose, TokenPipeEnd& endpoint)
 
 #endif
 
+//Randy Commented
 static bool AppInit(NodeContext& node, int argc, char* argv[])
 {
+    //return value is set to false
     bool fRet = false;
 
+    //Sets the thread local name to 'init' (if set to true)
     util::ThreadSetInternalName("init");
 
+    //BITCOIN_START
     // If Qt is used, parameters/bitcoin.conf are parsed in qt/bitcoin.cpp's main()
+    //BITCOIN_END
+
+    //Check that node.args is not null or 0
     ArgsManager& args = *Assert(node.args);
+    //Adds different arguments to the node's argument manager depending on the current directives/macros
     SetupServerArgs(args);
+    //Declare an error string placeholder
     std::string error;
+
+    //Attempt to parse arguments using args of 'ArgManager' type
     if (!args.ParseParameters(argc, argv, error)) {
         return InitError(Untranslated(strprintf("Error parsing command line arguments: %s\n", error)));
     }
 
+    //BITCOIN_START
     // Process help and version before taking care about datadir
+    //BITCOIN_END
+
+    //If one of the many arguments for help is used
     if (HelpRequested(args) || args.IsArgSet("-version")) {
+        //Create a string that details the version number
         std::string strUsage = PACKAGE_NAME " version " + FormatFullVersion() + "\n";
 
+        //If help was requested but the 'version' argument wasn't set
         if (args.IsArgSet("-version")) {
+            //Add license and usage information
             strUsage += FormatParagraph(LicenseInfo());
         } else {
             strUsage += "\nUsage:  bitcoind [options]                     Start " PACKAGE_NAME "\n"
@@ -135,10 +153,14 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
             strUsage += args.GetHelpMessage();
         }
 
+        //Format the string for printing to console
         tfm::format(std::cout, "%s", strUsage);
         return true;
     }
 
+    //CHECKPOINT
+
+//This condition to make 'daemon_ep' is only activated if something in the build environment has the 'HAVE_DECL_FORK' macro defined to be 1 (or true)
 #if HAVE_DECL_FORK
     // Communication with parent after daemonizing. This is used for signalling in the following ways:
     // - a boolean token is sent when the initialization process (all the Init* functions) have finished to indicate
@@ -147,23 +169,34 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
     // end, which is interpreted as failure to start.
     TokenPipeEnd daemon_ep;
 #endif
+
+    //Create an 'any' value called context and give it the address of the node context from the parameter
     std::any context{&node};
     try
     {
+        //If the dataDir argument is defined and is not a directory
         if (!CheckDataDirOption()) {
+            //Return an error
             return InitError(Untranslated(strprintf("Specified data directory \"%s\" does not exist.\n", args.GetArg("-datadir", ""))));
         }
+
+        //CHECKPOINT
         if (!args.ReadConfigFiles(error, true)) {
             return InitError(Untranslated(strprintf("Error reading configuration file: %s\n", error)));
         }
+
+        //BITCOIN_START
         // Check for chain settings (Params() calls are only valid after this clause)
+        //BITCOIN_END
         try {
             SelectParams(args.GetChainName());
         } catch (const std::exception& e) {
             return InitError(Untranslated(strprintf("%s\n", e.what())));
         }
 
+        //BITCOIN_START
         // Error out when loose non-argument tokens are encountered on command line
+        //BITCOIN_END
         for (int i = 1; i < argc; i++) {
             if (!IsSwitchChar(argv[i][0])) {
                 return InitError(Untranslated(strprintf("Command line contains unexpected token '%s', see bitcoind -h for a list of options.\n", argv[i])));
@@ -175,24 +208,36 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
             return false;
         }
 
+        //BITCOIN_START
         // -server defaults to true for bitcoind but not for the GUI so do this here
+        //BITCOIN_END
         args.SoftSetBoolArg("-server", true);
+
+        //BITCOIN_START
         // Set this early so that parameter interactions go to console
+        //BITCOIN_END
+
         InitLogging(args);
         InitParameterInteraction(args);
         if (!AppInitBasicSetup(args)) {
+            //BITCOIN_START
             // InitError will have been called with detailed error, which ends up on console
+            //BITCOIN_END
             return false;
         }
         if (!AppInitParameterInteraction(args)) {
+            //BITCOIN_START
             // InitError will have been called with detailed error, which ends up on console
+            //BITCOIN_END
             return false;
         }
 
         node.kernel = std::make_unique<kernel::Context>();
         if (!AppInitSanityChecks(*node.kernel))
         {
+            //BITCOIN_START
             // InitError will have been called with detailed error, which ends up on console
+            //BITCOIN_END
             return false;
         }
 
@@ -231,6 +276,8 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
             // If locking the data directory failed, exit immediately
             return false;
         }
+
+        //AppInitInterfaces initializes the node's 'chain_clients'
         fRet = AppInitInterfaces(node) && AppInitMain(node);
     }
     catch (const std::exception& e) {
@@ -256,23 +303,36 @@ static bool AppInit(NodeContext& node, int argc, char* argv[])
     return fRet;
 }
 
+
+//RANDY_COMMENTED
 MAIN_FUNCTION
 {
 #ifdef WIN32
     util::WinCmdLineArgs winArgs;
     std::tie(argc, argv) = winArgs.get();
 #endif
-
+    //Create a node context, called node, which initializes things like the memory pool
     NodeContext node;
+
+    //Declare exit_status code
     int exit_status;
+
+    //Make a pointer to an Init object
+    //node ref is actually set to a pointer to BitcoinNodeInit which is used here: init->m_ipc->startSpawnedProcess
     std::unique_ptr<interfaces::Init> init = interfaces::MakeNodeInit(node, argc, argv, exit_status);
+
+    //If init wasn't created
     if (!init) {
+        //return whatever exit_status was given by 'MakeNodeInit'
         return exit_status;
     }
 
+    //Setup some system os & architecture related stuff
     SetupEnvironment();
 
+    //BITCOIN_START
     // Connect bitcoind signal handlers
+    //BITCOIN_END
     noui_connect();
 
     return (AppInit(node, argc, argv) ? EXIT_SUCCESS : EXIT_FAILURE);

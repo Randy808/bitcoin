@@ -1008,9 +1008,24 @@ std::chrono::microseconds PeerManagerImpl::NextInvToInbounds(std::chrono::micros
     return m_next_inv_to_inbounds;
 }
 
+<<<<<<< HEAD
 bool PeerManagerImpl::IsBlockRequested(const uint256& hash)
 {
     return mapBlocksInFlight.find(hash) != mapBlocksInFlight.end();
+=======
+//RANDY_COMMENTED
+//Returns the node state associated with the node id in 'mapNodeState'
+static CNodeState *State(NodeId pnode) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
+    //Use an iterator to find the node state from 'mapNodeState' using the node id
+    std::map<NodeId, CNodeState>::iterator it = mapNodeState.find(pnode);
+
+    //If the iterator could not find the desired node state, return the null pointer
+    if (it == mapNodeState.end())
+        return nullptr;
+
+    //Otherwise return the second value of the identified pair, the found node state
+    return &it->second;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 }
 
 void PeerManagerImpl::RemoveBlockRequest(const uint256& hash)
@@ -1189,87 +1204,215 @@ void PeerManagerImpl::UpdateBlockAvailability(NodeId nodeid, const uint256 &hash
     }
 }
 
+<<<<<<< HEAD
 void PeerManagerImpl::FindNextBlocksToDownload(const Peer& peer, unsigned int count, std::vector<const CBlockIndex*>& vBlocks, NodeId& nodeStaller)
+=======
+//RANDY_COMMENTED
+//Tries to make total blocks in vBlocks equal to the 'count' requested by finding the common block between the node specified by nodeId, and the active chain, and then excluding already obtained blocks from download.
+void PeerManagerImpl::FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<const CBlockIndex*>& vBlocks, NodeId& nodeStaller)
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 {
+    //If count parameter is 0, return
     if (count == 0)
         return;
 
+    //Allocate 'count' more elements spaces in vBlocks vector param
     vBlocks.reserve(vBlocks.size() + count);
+<<<<<<< HEAD
     CNodeState *state = State(peer.m_id);
+=======
+
+    //Create an object for node state (using CNodeState)
+    CNodeState *state = State(nodeid);
+
+    //Assert that the state for the node id isn't null
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     assert(state != nullptr);
 
+    //BITCOIN_START
     // Make sure pindexBestKnownBlock is up to date, we'll need it.
+<<<<<<< HEAD
     ProcessBlockAvailability(peer.m_id);
+=======
+    //BITCOIN_END
 
+    //Call ProcessBlockAvailability on the node id (revisit)
+    ProcessBlockAvailability(nodeid);
+>>>>>>> 38a46344c (Made some comments to help me understand.)
+
+    //The state created earlier has a null pointer to the best known block or if the chain work of the best known block is less than the active chain work or miniumum chain work, return
     if (state->pindexBestKnownBlock == nullptr || state->pindexBestKnownBlock->nChainWork < m_chainman.ActiveChain().Tip()->nChainWork || state->pindexBestKnownBlock->nChainWork < nMinimumChainWork) {
+        //BITCOIN_START
         // This peer has nothing interesting.
+        //BITCOIN_END
         return;
     }
 
+    //If the state's last common block is null
     if (state->pindexLastCommonBlock == nullptr) {
+        //BITCOIN_START
         // Bootstrap quickly by guessing a parent of our best tip is the forking point.
         // Guessing wrong in either direction is not a problem.
+        //BITCOIN_END
+
+        //Set the state's last common block to the active chain's block at the state's 'best known' block or whatever the highest active chain block is (if the active chain doesn't go as high as best known block height)
         state->pindexLastCommonBlock = m_chainman.ActiveChain()[std::min(state->pindexBestKnownBlock->nHeight, m_chainman.ActiveChain().Height())];
     }
 
+    //BITCOIN_START
     // If the peer reorganized, our previous pindexLastCommonBlock may not be an ancestor
     // of its current tip anymore. Go back enough to fix that.
+    //BITCOIN_END
+
+    //Set the last comon block to the the last common ancestor of the last common block with active chain and the best known block
     state->pindexLastCommonBlock = LastCommonAncestor(state->pindexLastCommonBlock, state->pindexBestKnownBlock);
+
+    //If the last common block IS the best known block, return
     if (state->pindexLastCommonBlock == state->pindexBestKnownBlock)
         return;
 
+<<<<<<< HEAD
+=======
+    //Get consesnus params from m_chainparams (from prop on PeerManager Impl?)
+    const Consensus::Params& consensusParams = m_chainparams.GetConsensus();
+
+    //Create a vector of block indexes to fetch
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     std::vector<const CBlockIndex*> vToFetch;
+
+    //Create a block index that points to the last common block
     const CBlockIndex *pindexWalk = state->pindexLastCommonBlock;
+
+    //BITCOIN_START
     // Never fetch further than the best block we know the peer has, or more than BLOCK_DOWNLOAD_WINDOW + 1 beyond the last
     // linked block we have in common with this peer. The +1 is so we can detect stalling, namely if we would be able to
     // download that next block if the window were 1 larger.
+    //BITCOIN_END
+
+
+    //Establish the height where the block download stops as the height of the common block + the additional blocks we want (the BLOCK_DOWNLOAD_WINDOW)
     int nWindowEnd = state->pindexLastCommonBlock->nHeight + BLOCK_DOWNLOAD_WINDOW;
+
+    //The max height is the minimum between the max blocks we can download and the height of the best known block from node with the node id specified in param
     int nMaxHeight = std::min<int>(state->pindexBestKnownBlock->nHeight, nWindowEnd + 1);
+
+    //Initialize a NodeId to -1
     NodeId waitingfor = -1;
+
+    //While pindexWalk (the pointer to the block we last downloaded from node) is lower than the max height we want to download
     while (pindexWalk->nHeight < nMaxHeight) {
+
+        //BITCOIN_START
         // Read up to 128 (or more, if more blocks than that are needed) successors of pindexWalk (towards
         // pindexBestKnownBlock) into vToFetch. We fetch 128, because CBlockIndex::GetAncestor may be as expensive
         // as iterating over ~100 CBlockIndex* entries anyway.
+        //BITCOIN_END
+
+
+        //Get the number of blocks to fetch, it's the minimum of either all the blocks we need or the total count of blocks requested in the parameter (must be at least 128)
         int nToFetch = std::min(nMaxHeight - pindexWalk->nHeight, std::max<int>(count - vBlocks.size(), 128));
+
+        //Resize the vToFetch vector to the size of blocks that can realistically be fetched
         vToFetch.resize(nToFetch);
+
+        //Get the block from the other node's state. Gets the ancestor of the desired stopping point
         pindexWalk = state->pindexBestKnownBlock->GetAncestor(pindexWalk->nHeight + nToFetch);
+
+        //Set the vToFetch starting from the end of vToFetch
         vToFetch[nToFetch - 1] = pindexWalk;
+
+        //Work out way backwards to populate all the previous from the last requested block by using the block reference in front of it (since every block maintains a reference to its previous one)
         for (unsigned int i = nToFetch - 1; i > 0; i--) {
             vToFetch[i - 1] = vToFetch[i]->pprev;
         }
 
+        //BITCOIN_START
         // Iterate over those blocks in vToFetch (in forward direction), adding the ones that
         // are not yet downloaded and not in flight to vBlocks. In the meantime, update
         // pindexLastCommonBlock as long as all ancestors are already downloaded, or if it's
         // already part of our chain (and therefore don't need it even if pruned).
+        //BITCOIN_END
+
+
+        //For every block index in fetched blocks
         for (const CBlockIndex* pindex : vToFetch) {
+
+            //If the block isn't valid, return
             if (!pindex->IsValid(BLOCK_VALID_TREE)) {
+                //BITCOIN_START
                 // We consider the chain that this peer is on invalid.
+                //BITCOIN_END
                 return;
             }
+<<<<<<< HEAD
             if (!CanServeWitnesses(peer) && DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_SEGWIT)) {
+=======
+
+            //If the state of the node the block was requested from doesn't have a witness but it's witness is enabled on the previous block, return
+            if (!State(nodeid)->fHaveWitness && IsWitnessEnabled(pindex->pprev, consensusParams)) {
+                //BITCOIN_START
+>>>>>>> 38a46344c (Made some comments to help me understand.)
                 // We wouldn't download this block or its descendants from this peer.
+                //BITCOIN_END
                 return;
             }
+
+            //If the status of the block has a flag saying it has data or the active chain has the block
             if (pindex->nStatus & BLOCK_HAVE_DATA || m_chainman.ActiveChain().Contains(pindex)) {
+
+                // If the transactions of the current block and all the previous blocks have been downloaded, set the last common block to this block (since we already have all the transactions from it)
                 if (pindex->HaveTxsDownloaded())
                     state->pindexLastCommonBlock = pindex;
+<<<<<<< HEAD
             } else if (!IsBlockRequested(pindex->GetBlockHash())) {
+=======
+            }
+            //If the block retrieved is NOT in mapBlocksInFlight
+            else if (mapBlocksInFlight.count(pindex->GetBlockHash()) == 0) {
+
+                //BITCOIN_START
+>>>>>>> 38a46344c (Made some comments to help me understand.)
                 // The block is not already downloaded, and not yet in flight.
+                //BITCOIN_END
+
+                //If the heiht of the block is bigger than the window end, do some stuff and return
                 if (pindex->nHeight > nWindowEnd) {
+
+                    //BITCOIN_START
                     // We reached the end of the window.
+<<<<<<< HEAD
                     if (vBlocks.size() == 0 && waitingfor != peer.m_id) {
+=======
+                    //BITCOIN_END
+
+                    //If vBlocks is empty and the waitingFor int isn't rqual to node id
+                    if (vBlocks.size() == 0 && waitingfor != nodeid) {
+                        //BITCOIN_START
+>>>>>>> 38a46344c (Made some comments to help me understand.)
                         // We aren't able to fetch anything, but we would be if the download window was one larger.
+                        //BITCOIN_END
+
+                        //We have a stalling node requal to the node we're waitinf for (revisits)
                         nodeStaller = waitingfor;
                     }
                     return;
                 }
+
+                //Push the block into vBlocks if everything is good and block isn't bigger than window height
                 vBlocks.push_back(pindex);
+
+                //If vBlocks is equal to the total amount of blocks we wanted, then return
                 if (vBlocks.size() == count) {
                     return;
                 }
-            } else if (waitingfor == -1) {
+            }
+            //If the id we're waiting for is -1 (which it will be in first run)
+            else if (waitingfor == -1) {
+                //BITCOIN_START
                 // This is the first already-in-flight block.
+                //BITCOIN_END
+
+                //Set the waitingFor int to the 'first' property in the block hash index of mapBlocksInFlight. This also adds the blockhash to mapBlocksInFlight I imagine
                 waitingfor = mapBlocksInFlight[pindex->GetBlockHash()].first;
             }
         }
@@ -1530,6 +1673,8 @@ void PeerManagerImpl::Misbehaving(Peer& peer, int howmuch, const std::string& me
              peer.m_id, score_before, score_now, warning, message_prefixed);
 }
 
+//RANDY_COMMENTED
+//CHECKPOINT
 bool PeerManagerImpl::MaybePunishNodeForBlock(NodeId nodeid, const BlockValidationState& state,
                                               bool via_compact_block, const std::string& message)
 {
@@ -1895,8 +2040,11 @@ void PeerManagerImpl::SendPings()
     for(auto& it : m_peer_map) it.second->m_ping_queued = true;
 }
 
+//RANDY_COMMENTED
+//Just adds a lock to cs_main before calling _RelayTransaction, the method with the real logic
 void PeerManagerImpl::RelayTransaction(const uint256& txid, const uint256& wtxid)
 {
+<<<<<<< HEAD
     LOCK(m_peer_mutex);
     for(auto& it : m_peer_map) {
         Peer& peer = *it.second;
@@ -1907,6 +2055,33 @@ void PeerManagerImpl::RelayTransaction(const uint256& txid, const uint256& wtxid
         LOCK(tx_relay->m_tx_inventory_mutex);
         if (!tx_relay->m_tx_inventory_known_filter.contains(hash)) {
             tx_relay->m_tx_inventory_to_send.insert(hash);
+=======
+    WITH_LOCK(cs_main, _RelayTransaction(txid, wtxid););
+}
+
+//RANDY_COMMENTED
+//Creates a Node State with every node and adds the transaction related to the params to the node's inventory using 'PushTxInventory'
+void PeerManagerImpl::_RelayTransaction(const uint256& txid, const uint256& wtxid)
+{
+    //Call 'ForEachNode' on the CConMan object, passing in something of a lambda with 2 references to the same transaction
+    m_connman.ForEachNode([&txid, &wtxid](CNode* pnode)
+    //Lock cs_main
+    EXCLUSIVE_LOCKS_REQUIRED(::cs_main) {
+        AssertLockHeld(::cs_main);
+
+        //Creae a node state out of this instance's node's id
+        CNodeState* state = State(pnode->GetId());
+
+        //If the state is null, return
+        if (state == nullptr) return;
+
+        //If the state has a flag for relaying wtxids, push that id into the node's inventoru
+        if (state->m_wtxid_relay) {
+            pnode->PushTxInventory(wtxid);
+        } else {
+            //Otherwise just push the txid
+            pnode->PushTxInventory(txid);
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         }
     };
 }
@@ -2764,66 +2939,157 @@ void PeerManagerImpl::ProcessGetCFCheckPt(CNode& node, Peer& peer, CDataStream& 
     m_connman.PushMessage(&node, std::move(msg));
 }
 
+<<<<<<< HEAD
 void PeerManagerImpl::ProcessBlock(CNode& node, const std::shared_ptr<const CBlock>& block, bool force_processing)
 {
     bool new_block{false};
     m_chainman.ProcessNewBlock(block, force_processing, &new_block);
     if (new_block) {
         node.m_last_block_time = GetTime<std::chrono::seconds>();
+=======
+//RANDY_COMMENTED
+//Process the block using the chainstate manager and updates the time on the source node indicating when the last block came in from the source node reference
+void PeerManagerImpl::ProcessBlock(CNode& pfrom, const std::shared_ptr<const CBlock>& pblock, bool fForceProcessing)
+{
+    //Initialize the new block bool as false
+    bool fNewBlock = false;
+
+    //Use the chain state manager's process new block and just pass on the same params down along with the local boolean fNewBlock
+    m_chainman.ProcessNewBlock(m_chainparams, pblock, fForceProcessing, &fNewBlock);
+
+    //If fNewBlock is true
+    if (fNewBlock) {
+        //Change the lastBlockTime on the sending node to the current time
+        pfrom.nLastBlockTime = GetTime();
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     } else {
+        //If it's not a new block, lock the main thread
         LOCK(cs_main);
+<<<<<<< HEAD
         mapBlockSource.erase(block->GetHash());
+=======
+
+        //And erase the block hash from mapBlockSource
+        mapBlockSource.erase(pblock->GetHash());
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     }
 }
 
+//RANDY_COMMENTED
 void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDataStream& vRecv,
                                      const std::chrono::microseconds time_received,
                                      const std::atomic<bool>& interruptMsgProc)
 {
+    //Log the type of message, the amount of bytes consumed by the message, and the id from the node
     LogPrint(BCLog::NET, "received: %s (%u bytes) peer=%d\n", SanitizeString(msg_type), vRecv.size(), pfrom.GetId());
 
+    //Get a reference from the peer that sent the message (by using the id of the CNode in the parameter)
     PeerRef peer = GetPeerRef(pfrom.GetId());
+
+    //If the peerRef we tried to get is null, return
     if (peer == nullptr) return;
 
+    //If the mesage type is "version"
     if (msg_type == NetMsgType::VERSION) {
+
+        //If the version detected from the node is not 0 (meaning this node has already sent us its version before)
         if (pfrom.nVersion != 0) {
+            //Log that we got a redundant version message from the peer
             LogPrint(BCLog::NET, "redundant version message from peer=%d\n", pfrom.GetId());
+            //and return
             return;
         }
 
+        //Declare a variable for time
         int64_t nTime;
+<<<<<<< HEAD
         CService addrMe;
         uint64_t nNonce = 1;
+=======
+
+        //Declare a variable for our address
+        CAddress addrMe;
+
+        //Declare a variable for the address the message is from
+        CAddress addrFrom;
+
+        //Initialize a nonce
+        uint64_t nNonce = 1;
+
+        //Declare a service int
+        uint64_t nServiceInt;
+
+        //Declare service flags
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         ServiceFlags nServices;
+
+        //Declare a integer to hold the version
         int nVersion;
+
+        //Declare a string
         std::string cleanSubVer;
+
+        //Initialize a starting height variable to a negative number
         int starting_height = -1;
+
+        //Set the boolean fRelay to true
         bool fRelay = true;
 
+<<<<<<< HEAD
         vRecv >> nVersion >> Using<CustomUintFormatter<8>>(nServices) >> nTime;
+=======
+        //Receive data from the vRecv stream into the version, service int, the time, and what should be our address
+        vRecv >> nVersion >> nServiceInt >> nTime >> addrMe;
+
+        //If the time is negative somehow
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         if (nTime < 0) {
+            //set it to 0
             nTime = 0;
         }
+<<<<<<< HEAD
         vRecv.ignore(8); // Ignore the addrMe service bits sent by the peer
         vRecv >> addrMe;
+=======
+        //Create a service flag enum based on the nServiceInt received, and put it into nServices
+        nServices = ServiceFlags(nServiceInt);
+
+        //If pfrom is not an inbound connection
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         if (!pfrom.IsInboundConn())
         {
+            //Set the services on the ip address manager to connect the pfrom ip to nServices
             m_addrman.SetServices(pfrom.addr, nServices);
         }
+
+        //If we're expecting services from this connection and the nServices we received in the message doesn't have all the desirable service flags
         if (pfrom.ExpectServicesFromConn() && !HasAllDesirableServiceFlags(nServices))
         {
+            //Log that we don't have all the desirable service flags for service connections
             LogPrint(BCLog::NET, "peer=%d does not offer the expected services (%08x offered, %08x expected); disconnecting\n", pfrom.GetId(), nServices, GetDesirableServiceFlags(nServices));
+
+            //Mark the node this message came from for disconnect
             pfrom.fDisconnect = true;
+
+            //terminatr and return
             return;
         }
 
+        //if the version received in the message is less than the minimum peer protocol version
         if (nVersion < MIN_PEER_PROTO_VERSION) {
+            //BITCOIN_START
             // disconnect from peers older than this proto version
+            //BITCOIN_END
             LogPrint(BCLog::NET, "peer=%d using obsolete version %i; disconnecting\n", pfrom.GetId(), nVersion);
+
+            //Mark connected node for disconnect
             pfrom.fDisconnect = true;
+
+            //terminate
             return;
         }
 
+<<<<<<< HEAD
         if (!vRecv.empty()) {
             // The version message includes information about the sending node which we don't use:
             //   - 8 bytes (service bits)
@@ -2832,34 +3098,71 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             vRecv.ignore(26);
             vRecv >> nNonce;
         }
+=======
+        //If if vcRev is not empty
+        if (!vRecv.empty())
+            //Try to read the address where the messave is from and the nonce
+            vRecv >> addrFrom >> nNonce;
+
+        //If the vRecv has more
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         if (!vRecv.empty()) {
+            //Then initialize a string for the subversion
             std::string strSubVer;
+
+            //And read in the sub version
             vRecv >> LIMITED_STRING(strSubVer, MAX_SUBVERSION_LENGTH);
+
+            //Make sure to santize the string
             cleanSubVer = SanitizeString(strSubVer);
         }
+
+        //If there's still information in vRecv
         if (!vRecv.empty()) {
+            //Read in the starting height
             vRecv >> starting_height;
         }
+
+        //If vRecv has more
         if (!vRecv.empty())
+            //Read in the value for fRelay
             vRecv >> fRelay;
+
+        //BITCOIN_START
         // Disconnect if we connected to ourself
+        //BITCOIN_END
+
+        //If the connection is inbound AND the incoming nonce is no bueno
         if (pfrom.IsInboundConn() && !m_connman.CheckIncomingNonce(nNonce))
         {
+            //We've probably connected to ourself, so set the node to disconnect
             LogPrintf("connected to self at %s, disconnecting\n", pfrom.addr.ToString());
+            //set the node representing ourselves to be disconnected
             pfrom.fDisconnect = true;
+            //Terminate the processing of messages for this node
             return;
         }
 
+        //If the node is inbound and the address from the node sending us this message can be routed to
         if (pfrom.IsInboundConn() && addrMe.IsRoutable())
         {
+            //If its in mapLocalHost, increase its nScore
             SeenLocal(addrMe);
         }
 
+        //BITCOIN_START
         // Inbound peers send us their version message when they connect.
         // We send our version message in response.
+<<<<<<< HEAD
         if (pfrom.IsInboundConn()) {
             PushNodeVersion(pfrom, *peer);
         }
+=======
+        //BITCOIN_END
+
+        //CHECKPOINT
+        if (pfrom.IsInboundConn()) PushNodeVersion(pfrom, GetAdjustedTime());
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 
         // Change version
         const int greatest_common_version = std::min(nVersion, PROTOCOL_VERSION);

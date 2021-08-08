@@ -349,13 +349,20 @@ public:
 
     std::string ToString() const;
 
+    //RANDY_COMMENTED
+    //Returns true if one of the inputs has a 'scriptWitness' property
     bool HasWitness() const
     {
+        //For every input in transaction
         for (size_t i = 0; i < vin.size(); i++) {
+            //If one of them has a non-null 'scriptWitness' property
             if (!vin[i].scriptWitness.IsNull()) {
+                //return true
                 return true;
             }
         }
+
+        //Otherwise return false
         return false;
     }
 };

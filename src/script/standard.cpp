@@ -134,6 +134,7 @@ static bool MatchMultisig(const CScript& script, int& required_sigs, std::vector
     return (it + 1 == script.end());
 }
 
+<<<<<<< HEAD
 std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMultiA(const CScript& script)
 {
     std::vector<Span<const unsigned char>> keyspans;
@@ -168,6 +169,10 @@ std::optional<std::pair<int, std::vector<Span<const unsigned char>>>> MatchMulti
     return std::pair{*threshold, std::move(keyspans)};
 }
 
+=======
+//RANDY_COMMENTED
+//CHECKPOINT
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 TxoutType Solver(const CScript& scriptPubKey, std::vector<std::vector<unsigned char>>& vSolutionsRet)
 {
     vSolutionsRet.clear();

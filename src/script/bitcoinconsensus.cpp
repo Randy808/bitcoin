@@ -22,23 +22,54 @@ public:
     m_remaining(txToLen)
     {}
 
+<<<<<<< HEAD
     void read(Span<std::byte> dst)
     {
         if (dst.size() > m_remaining) {
+=======
+    //RANDY_COMMENTED
+    //This method writes nSize (unit is bytes? of) data from pointer pch into m_data and removes the size of data written from m_remaining
+    void read(char* pch, size_t nSize)
+    {
+        //If the size in the parameter is bigger than the m_remaining property of this TxInputStream
+        if (nSize > m_remaining)
+            //error out
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             throw std::ios_base::failure(std::string(__func__) + ": end of data");
         }
 
+<<<<<<< HEAD
         if (dst.data() == nullptr) {
+=======
+        //If the pch parameter is null
+        if (pch == nullptr)
+            //error out
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             throw std::ios_base::failure(std::string(__func__) + ": bad destination buffer");
         }
 
+<<<<<<< HEAD
         if (m_data == nullptr) {
+=======
+        //If the m_data property is null
+        if (m_data == nullptr)
+            //throw
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             throw std::ios_base::failure(std::string(__func__) + ": bad source buffer");
         }
 
+<<<<<<< HEAD
         memcpy(dst.data(), m_data, dst.size());
         m_remaining -= dst.size();
         m_data += dst.size();
+=======
+        //Copy the pointer data into m_data for the given nSize
+        memcpy(pch, m_data, nSize);
+        //Remove the moved data (nSize) from the m_remaining property
+        m_remaining -= nSize;
+        //Increase the pointer address by nSize to make sure it points to the address right after what was just written
+        m_data += nSize;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     }
 
     template<typename T>

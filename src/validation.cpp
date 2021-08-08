@@ -557,9 +557,13 @@ public:
     PackageMempoolAcceptResult AcceptPackage(const Package& package, ATMPArgs& args) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
 private:
+    //BITCOIN_START
     // All the intermediate state that gets passed between the various levels
     // of checking a given transaction.
+    //BITCOIN_END
+    //RANDY_COMMENTED
     struct Workspace {
+        //Constructor that takes in a transaction reference and sets the 'm_ptx' property equal to it, along with storing the reference's transaction hash into 'm_hash'.
         explicit Workspace(const CTransactionRef& ptx) : m_ptx(ptx), m_hash(ptx->GetHash()) {}
         /** Txids of mempool transactions that this transaction directly conflicts with. */
         std::set<uint256> m_conflicts;
@@ -672,47 +676,123 @@ private:
     bool m_rbf{false};
 };
 
+
+//RANDY_COMMENTED
 bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
 {
+<<<<<<< HEAD
     AssertLockHeld(cs_main);
     AssertLockHeld(m_pool.cs);
+=======
+    //Get transaction and transaction hash from workspace parameter
+>>>>>>> 38a46344c (Made some comments to help me understand.)
     const CTransactionRef& ptx = ws.m_ptx;
     const CTransaction& tx = *ws.m_ptx;
     const uint256& hash = ws.m_hash;
 
+    //BITCOIN_START
     // Copy/alias what we need out of args
+    //BITCOIN_END
+
+    //Get the acceptTime from args parameter
     const int64_t nAcceptTime = args.m_accept_time;
+
+    //Get bypass limit from args param
     const bool bypass_limits = args.m_bypass_limits;
+
+    //And get the coins to uncache from the args param
     std::vector<COutPoint>& coins_to_uncache = args.m_coins_to_uncache;
 
+    //BITCOIN_START
     // Alias what we need out of ws
+    //BITCOIN_END
+
+    //Get the state from the workspace param
     TxValidationState& state = ws.m_state;
+<<<<<<< HEAD
+    std::unique_ptr<CTxMemPoolEntry>& entry = ws.m_entry;
+=======
+
+    //Get any conflicts from workspace
+    std::set<uint256>& setConflicts = ws.m_conflicts;
+
+    //Get all conflicts from workspace
+    CTxMemPool::setEntries& allConflicting = ws.m_all_conflicting;
+
+    //Get ancestors from workspace
+    CTxMemPool::setEntries& setAncestors = ws.m_ancestors;
+
+    //Get the mempool entry from workspace param
     std::unique_ptr<CTxMemPoolEntry>& entry = ws.m_entry;
 
+
+    //Get the replacement tarnsaction from workspace
+    bool& fReplacementTransaction = ws.m_replacement_transaction;
+
+    //Get any fee modification from ws
+    CAmount& nModifiedFees = ws.m_modified_fees;
+
+    //Get conflicting fees
+    CAmount& nConflictingFees = ws.m_conflicting_fees;
+
+    //Get conflicting size
+    size_t& nConflictingSize = ws.m_conflicting_size;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
+
+    //Call checkTransaction on the transaction and state retrieved from the workspace parameter
     if (!CheckTransaction(tx, state)) {
-        return false; // state filled in by CheckTransaction
+        //If check transaction returned false, return false in method
+        return false; //BITCOIN_START // state filled in by CheckTransaction //BITCOIN_END
     }
 
+    //BITCOIN_START
     // Coinbase is only valid in a block, not as a loose transaction
+    //BITCOIN_END
+
+    //If the transaction is a coinbase
     if (tx.IsCoinBase())
+        //Return whatever value is returned by the state's Invalid method
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "coinbase");
 
+    //BITCOIN_START
     // Rather not work on nonstandard transactions (unless -testnet/-regtest)
+   //BITCOIN_END
+
+    //Create a string
     std::string reason;
+    //If the requireStandard boolean is true but the transaction isn't standard
     if (fRequireStandard && !IsStandardTx(tx, reason))
+        //return the state invalid method return value with the 'reason' variable that was populated by IsStandardTx
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, reason);
 
+    //BITCOIN_START
     // Do not work on transactions that are too small.
     // A transaction with 1 segwit input and 1 P2WPHK output has non-witness size of 82 bytes.
     // Transactions smaller than this are not relayed to mitigate CVE-2017-12842 by not relaying
     // 64-byte transactions.
+    //BITCOIN_END
+
+    //If the size of the serialized transaction without a witness is smaller than he minimum standard transaction size without a witness
     if (::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) < MIN_STANDARD_TX_NONWITNESS_SIZE)
+        //Say the state is invalid.
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "tx-size-small");
 
+    //BITCOIN_START
     // Only accept nLockTime-using transactions that can be mined in the next
     // block; we don't want our mempool filled up with transactions that can't
     // be mined yet.
+<<<<<<< HEAD
     if (!CheckFinalTxAtTip(m_active_chainstate.m_chain.Tip(), tx)) {
+=======
+    //BITCOIN_END
+
+    //Assert that the address of the active chain is the same one contained in the active chain state (whatever that means?)
+    assert(std::addressof(::ChainActive()) == std::addressof(m_active_chainstate.m_chain));
+
+    //CHECKPOINT
+   
+    if (!CheckFinalTx(m_active_chainstate.m_chain.Tip(), tx, STANDARD_LOCKTIME_VERIFY_FLAGS))
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "non-final");
     }
 
@@ -3313,77 +3393,145 @@ static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& st
     return true;
 }
 
+
+//RANDY_COMMENTED
+//Check the block headers, signet proof of work, the merkle root, the block transaction sizes, the transactions on the block aren't empty, the block only has one coinbase transaction at the beginning, individually check every transaction in block, make sure the number of signature operations are under a limit, and finally mark the block as checked
 bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW, bool fCheckMerkleRoot)
 {
+    //BITCOIN_START
     // These are checks that are independent of context.
+    //BITCOIN_END
 
+    //If the block was already checked, return true
     if (block.fChecked)
         return true;
 
+    //BITCOIN_START
     // Check that the header is valid (particularly PoW).  This is mostly
     // redundant with the call in AcceptBlockHeader.
+    //BITCOIN_END
+
+    //If the check on the block header is false
     if (!CheckBlockHeader(block, state, consensusParams, fCheckPOW))
+        //return false
         return false;
 
+    //BITCOIN_START
     // Signet only: check block solution
+    //BITCOIN_END
+
+    //If the signet_blocks flag on the consesusParams is true, and the checkPOW in param is true, AND the check on the signet block solution fails
     if (consensusParams.signet_blocks && fCheckPOW && !CheckSignetBlockSolution(block, consensusParams)) {
+        //Return an error response
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-signet-blksig", "signet block signature validation failure");
     }
 
+    //BITCOIN_START
     // Check the merkle root.
+    //BITCOIN_END
+
+    //If we should check the merkle root
     if (fCheckMerkleRoot) {
+        //Declare mutated boolean that defaults to false
         bool mutated;
+
+        //Wrap the block in a 'BlockMerkleRoot' and set it to hashMerkleRoot2 along with the bool for mutated
         uint256 hashMerkleRoot2 = BlockMerkleRoot(block, &mutated);
+
+        //If the block's hashMerkleRoot is not equal to the new hashMerkleRoot
         if (block.hashMerkleRoot != hashMerkleRoot2)
+            //return an error
             return state.Invalid(BlockValidationResult::BLOCK_MUTATED, "bad-txnmrklroot", "hashMerkleRoot mismatch");
 
+        //BITCOIN_START
         // Check for merkle tree malleability (CVE-2012-2459): repeating sequences
         // of transactions in a block without affecting the merkle root of a block,
         // while still invalidating it.
+        //BITCOIN_END
+
+        //If mutated is true (from BlockMerkleRoot transformation)
         if (mutated)
+            //Return an error that says there's duplicate transactions (I guess that's what a mutated block means)
             return state.Invalid(BlockValidationResult::BLOCK_MUTATED, "bad-txns-duplicate", "duplicate transaction");
     }
 
+    //BITCOIN_START
     // All potential-corruption validation must be done before we do any
     // transaction validation, as otherwise we may mark the header as invalid
     // because we receive the wrong transactions for it.
     // Note that witness malleability is checked in ContextualCheckBlock, so no
     // checks that use witness data may be performed here.
+    //BITCOIN_END
 
+    //BITCOIN_START
     // Size limits
+    //BITCOIN_END
+
+    //If the block transactions are empty or if the number of transactions in the block (with respect to witness scale factor) are too big, OR if the serialized size (relative to  witness) is too big
     if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
+        //Just return invalid
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-length", "size limits failed");
 
+    //BITCOIN_START
     // First transaction must be coinbase, the rest must not be
+    //BITCOIN_END
+
+    //If the block transactions are empty or if the first block isn't the coinbase
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
+        //error out
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-missing", "first tx is not coinbase");
+
+    //Make sure there's only one coinbase transaction
     for (unsigned int i = 1; i < block.vtx.size(); i++)
         if (block.vtx[i]->IsCoinBase())
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-multiple", "more than one coinbase");
 
+    //BITCOIN_START
     // Check transactions
     // Must check for duplicate inputs (see CVE-2018-17144)
+    //BITCOIN_END
+
+    //For every trnsaction in the block transactions
     for (const auto& tx : block.vtx) {
+        //Declare the transaction state
         TxValidationState tx_state;
+
+        //If CheckTransaction (a cursory check in the original code base) returns false
         if (!CheckTransaction(*tx, tx_state)) {
+            //BITCOIN_START
             // CheckBlock() does context-free validation checks. The only
             // possible failures are consensus failures.
+            //BITCOIIN_END
+
+            //Asert the tx_state modified in checkTransaction is equal to transaction consensus
             assert(tx_state.GetResult() == TxValidationResult::TX_CONSENSUS);
+
+            //Return an error resposne anyway
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, tx_state.GetRejectReason(),
                                  strprintf("Transaction check failed (tx hash %s) %s", tx->GetHash().ToString(), tx_state.GetDebugMessage()));
         }
     }
+
+    //Initialize signature operations to 0
     unsigned int nSigOps = 0;
+
+    //For every transaction in the block's transactions
     for (const auto& tx : block.vtx)
     {
+        //Add the count of signature operations returned from GetLegacySigOpCount (with trasaction as parameter)
         nSigOps += GetLegacySigOpCount(*tx);
     }
+
+    //If the number of operations scaled with witness scale factor is bigger than the max sigops cost
     if (nSigOps * WITNESS_SCALE_FACTOR > MAX_BLOCK_SIGOPS_COST)
+        //return an error
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-sigops", "out-of-bounds SigOpCount");
 
+    //If the check proff of work is true and the check merkle root was said to be checked
     if (fCheckPOW && fCheckMerkleRoot)
+        //Say the block was checked because it got to the end
         block.fChecked = true;
-
+    //return true at end if we got here
     return true;
 }
 
@@ -3767,42 +3915,109 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     return true;
 }
 
+<<<<<<< HEAD
 bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& block, bool force_processing, bool* new_block)
+=======
+//RANDY_COMMENTED
+//Return true if the block was checked, accepted, and activated on the best chain
+bool ChainstateManager::ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, bool fForceProcessing, bool* fNewBlock)
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 {
+    //Make sure there's no lock on main thread
     AssertLockNotHeld(cs_main);
+<<<<<<< HEAD
+=======
+
+    //Make sure the address of chainstate active is the same as the active chain state
+    assert(std::addressof(::ChainstateActive()) == std::addressof(ActiveChainstate()));
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 
     {
+        //Initialize the block index to the null pointer
         CBlockIndex *pindex = nullptr;
+<<<<<<< HEAD
         if (new_block) *new_block = false;
+=======
+
+        //If the pointer to the 'NewBlock' bool is not null, initialize the boolean to false
+        if (fNewBlock) *fNewBlock = false;
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         BlockValidationState state;
 
+        //BITCOIN_START
         // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
         // Therefore, the following critical section must include the CheckBlock() call as well.
+        //BITCOIN_END
+
+        //Lock the main thread
         LOCK(cs_main);
 
+<<<<<<< HEAD
         // Skipping AcceptBlock() for CheckBlock() failures means that we will never mark a block as invalid if
         // CheckBlock() fails.  This is protective against consensus failure if there are any unknown forms of block
         // malleability that cause CheckBlock() to fail; see e.g. CVE-2012-2459 and
         // https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-February/016697.html.  Because CheckBlock() is
         // not very expensive, the anti-DoS benefits of caching failure (of a definitely-invalid block) are not substantial.
         bool ret = CheckBlock(*block, state, GetConsensus());
+=======
+        //BITCOIN_START
+        // Ensure that CheckBlock() passes before calling AcceptBlock, as
+        // belt-and-suspenders.
+        //BITCOIN_END
+
+        //Call 'checkBlock' on the block and the block validation state along with the return value of 'getConsensus' from the chainparams parameter
+        bool ret = CheckBlock(*pblock, state, chainparams.GetConsensus());
+
+        //If the return value of CheckBlock is true
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         if (ret) {
+            //BITCOIN_START
             // Store to disk
+<<<<<<< HEAD
             ret = ActiveChainstate().AcceptBlock(block, state, &pindex, force_processing, nullptr, new_block);
+=======
+            //BITCOIN_END
+
+            //Accept the block
+            ret = ActiveChainstate().AcceptBlock(pblock, state, chainparams, &pindex, fForceProcessing, nullptr, fNewBlock);
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         }
+
+        //If the return value of accept block is false
         if (!ret) {
+<<<<<<< HEAD
             GetMainSignals().BlockChecked(*block, state);
+=======
+            //Signal the block was checked?
+            GetMainSignals().BlockChecked(*pblock, state);
+            //Error out
+>>>>>>> 38a46344c (Made some comments to help me understand.)
             return error("%s: AcceptBlock FAILED (%s)", __func__, state.ToString());
         }
     }
 
+    //If we're here, the block ws accepted so notify the header tip (idk what that means)
     NotifyHeaderTip(ActiveChainstate());
 
+<<<<<<< HEAD
     BlockValidationState state; // Only used to report errors, not invalidity - ignore it
     if (!ActiveChainstate().ActivateBestChain(state, block)) {
+=======
+    //BITCOIN_START
+    // Only used to report errors, not invalidity - ignore it
+    //BITCOIN_END
+
+    //Declare the block validation state
+    BlockValidationState state;
+
+    //If the 'ActiveChainstate's 'ActivateBestChain' method returns false
+    if (!ActiveChainstate().ActivateBestChain(state, chainparams, pblock))
+        //Return an error
+>>>>>>> 38a46344c (Made some comments to help me understand.)
         return error("%s: ActivateBestChain failed (%s)", __func__, state.ToString());
     }
 
+    //Return true if the block was checked, accepted, and activated on the best chain
     return true;
 }
 

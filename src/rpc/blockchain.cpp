@@ -71,6 +71,62 @@ static GlobalMutex cs_blockchange;
 static std::condition_variable cond_blockchange;
 static CUpdatedBlock latestblock GUARDED_BY(cs_blockchange);
 
+<<<<<<< HEAD
+=======
+NodeContext& EnsureAnyNodeContext(const std::any& context)
+{
+    auto node_context = util::AnyPtr<NodeContext>(context);
+    if (!node_context) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Node context not found");
+    }
+    return *node_context;
+}
+
+CTxMemPool& EnsureMemPool(const NodeContext& node)
+{
+    if (!node.mempool) {
+        throw JSONRPCError(RPC_CLIENT_MEMPOOL_DISABLED, "Mempool disabled or instance not found");
+    }
+    return *node.mempool;
+}
+
+CTxMemPool& EnsureAnyMemPool(const std::any& context)
+{
+    return EnsureMemPool(EnsureAnyNodeContext(context));
+}
+
+ChainstateManager& EnsureChainman(const NodeContext& node)
+{
+    if (!node.chainman) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Node chainman not found");
+    }
+    WITH_LOCK(::cs_main, CHECK_NONFATAL(std::addressof(g_chainman) == std::addressof(*node.chainman)));
+    return *node.chainman;
+}
+
+ChainstateManager& EnsureAnyChainman(const std::any& context)
+{
+    return EnsureChainman(EnsureAnyNodeContext(context));
+}
+
+//RANDY_COMMENTED
+CBlockPolicyEstimator& EnsureFeeEstimator(const NodeContext& node)
+{
+    //If the fee estimator on the node is a null ptr, then error out because the fee estimation was disabled
+    if (!node.fee_estimator) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Fee estimation disabled");
+    }
+
+    //Otherwise return the pointer to the 'CBlockPolicyEstimator'
+    return *node.fee_estimator;
+}
+
+CBlockPolicyEstimator& EnsureAnyFeeEstimator(const std::any& context)
+{
+    return EnsureFeeEstimator(EnsureAnyNodeContext(context));
+}
+
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 /* Calculate the difficulty for a given block index.
  */
 double GetDifficulty(const CBlockIndex* blockindex)

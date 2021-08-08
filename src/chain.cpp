@@ -18,14 +18,29 @@ std::string CBlockIndex::ToString() const
                      pprev, nHeight, hashMerkleRoot.ToString(), GetBlockHash().ToString());
 }
 
+/**
+ * CChain implementation
+ */
+
+//RANDY_COMMENTED
+//This resizes the vChain to be 1 bigger than pindex's nHeight, and resets the value of every index (from pindex's nHeight to 0) to equal the pindex pointer that contains that idnex as its height
 void CChain::SetTip(CBlockIndex *pindex) {
+    //If pindex is null
     if (pindex == nullptr) {
+        //Call clear on the vChain
         vChain.clear();
+        //and return
         return;
     }
+
+    //Otherwise, resize the vChain to the height of pindex + 1
     vChain.resize(pindex->nHeight + 1);
+
+    //While pindex is not 0/null and the vChain at pindex's nHeight is not equal to pindex
     while (pindex && vChain[pindex->nHeight] != pindex) {
+        //Make the vChain at pindex's nHeight equal pindex
         vChain[pindex->nHeight] = pindex;
+        //Make pindex equal it's previous pindex
         pindex = pindex->pprev;
     }
 }

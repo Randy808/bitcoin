@@ -879,6 +879,16 @@ fs::path GetDefaultDataDir()
 #endif
 }
 
+<<<<<<< HEAD
+=======
+const fs::path &GetDataDir(bool fNetSpecific)
+{
+    return gArgs.GetDataDirPath(fNetSpecific);
+}
+
+//RANDY_COMMENTED
+//See if the 'datadir' argument was defined and return true if it's a directory or empty
+>>>>>>> 38a46344c (Made some comments to help me understand.)
 bool CheckDataDirOption()
 {
     const fs::path datadir{gArgs.GetPathArg("-datadir")};

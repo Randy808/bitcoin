@@ -24,10 +24,15 @@ CTxIn::CTxIn(COutPoint prevoutIn, CScript scriptSigIn, uint32_t nSequenceIn)
     nSequence = nSequenceIn;
 }
 
+//RANDY_COMMENTED
+//Constructor for Transaction input. It has the reference to the output of the transaction that it's spending in 'prevout' and the scriptsig solution needed to spend it. It also has nSquenceIn.
 CTxIn::CTxIn(uint256 hashPrevTx, uint32_t nOut, CScript scriptSigIn, uint32_t nSequenceIn)
 {
+    //Set the prevout to a 'COutPoint type'
     prevout = COutPoint(hashPrevTx, nOut);
+    //Set the scriptSig to the solution CScript
     scriptSig = scriptSigIn;
+    //Set the nSequence of the input, that I don't know what means in the context of an input.
     nSequence = nSequenceIn;
 }
 
@@ -65,14 +70,20 @@ uint256 CMutableTransaction::GetHash() const
     return SerializeHash(*this, SER_GETHASH, SERIALIZE_TRANSACTION_NO_WITNESS);
 }
 
+//RANDY_COMMENTED
+//Just calls Serialize Hash
 uint256 CTransaction::ComputeHash() const
 {
     return SerializeHash(*this, SER_GETHASH, SERIALIZE_TRANSACTION_NO_WITNESS);
 }
 
+//RANDY_COMMENTED
+//If the hasWitness method for the transaction returns false then return whatever the hash property is. Otherwise, call serializeHash with 0 param
 uint256 CTransaction::ComputeWitnessHash() const
 {
+    //If the transaction doesn't have a witness
     if (!HasWitness()) {
+        //Return the hash property
         return hash;
     }
     return SerializeHash(*this, SER_GETHASH, 0);
@@ -81,15 +92,29 @@ uint256 CTransaction::ComputeWitnessHash() const
 CTransaction::CTransaction(const CMutableTransaction& tx) : vin(tx.vin), vout(tx.vout), nVersion(tx.nVersion), nLockTime(tx.nLockTime), hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
 CTransaction::CTransaction(CMutableTransaction&& tx) : vin(std::move(tx.vin)), vout(std::move(tx.vout)), nVersion(tx.nVersion), nLockTime(tx.nLockTime), hash{ComputeHash()}, m_witness_hash{ComputeWitnessHash()} {}
 
+
+//RANDY_COMMENTED
+//Returns the total value of the transaction outputs, validating that it doesn't go out of range
 CAmount CTransaction::GetValueOut() const
 {
+    //Set a CAmount type of nValueOut to 0.
+    //This will represent the total of all outputs
     CAmount nValueOut = 0;
+
+    //For every tansaction output
     for (const auto& tx_out : vout) {
+        //If the value of the output isn't in money range or if the value of the running output isn't in the money range
         if (!MoneyRange(tx_out.nValue) || !MoneyRange(nValueOut + tx_out.nValue))
+            //throw an error
             throw std::runtime_error(std::string(__func__) + ": value out of range");
+        
+        //Otherwise add the value of the output to nValueOut (the running total of outputs)
         nValueOut += tx_out.nValue;
     }
+
+    //Assert that the final value is within the money range
     assert(MoneyRange(nValueOut));
+    //return the total value
     return nValueOut;
 }
 
