@@ -426,20 +426,33 @@ public:
     const CRPCCommand* m_wrapped_command;
 };
 
+//RANDY_COMMENTED
+//Inherits from 'Chain'
 class ChainImpl : public Chain
 {
 private:
     ChainstateManager& chainman() { return *Assert(m_node.chainman); }
 public:
+    //Constructor that only takes one parameter of 'NodeContext'
     explicit ChainImpl(NodeContext& node) : m_node(node) {}
+
+    //It optionally returns an integer representing the height of the chain.
     std::optional<int> getHeight() override
     {
+        //Add a thread lock
         LOCK(::cs_main);
+        //Make a CChain and extract m_node.chainman->ActiveChain() into it. The comment on the 'Assert' method says its the identity function
         const CChain& active = Assert(m_node.chainman)->ActiveChain();
+
+        //The height is set to the return value of 'Height' on the active chain
         int height = active.Height();
+
+        //If the height of the active chain is a non-negative number, return the height
         if (height >= 0) {
             return height;
         }
+
+        //otherwise return null
         return std::nullopt;
     }
     uint256 getBlockHash(int height) override
@@ -716,5 +729,6 @@ public:
 
 namespace interfaces {
 std::unique_ptr<Node> MakeNode(NodeContext* context) { return std::make_unique<node::NodeImpl>(context); }
+//MakeChain makes a unque_ptr (an immutable reference to a pointer that can't be copied) for ChainImpl
 std::unique_ptr<Chain> MakeChain(NodeContext& context) { return std::make_unique<node::ChainImpl>(context); }
 } // namespace interfaces

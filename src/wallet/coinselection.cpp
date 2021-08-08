@@ -63,6 +63,8 @@ struct {
 
 static const size_t TOTAL_TRIES = 100000;
 
+//RANDY_COMMENTED
+//CHECKPOINT
 bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& target_value, const CAmount& cost_of_change, std::set<CInputCoin>& out_set, CAmount& value_ret, CAmount not_input_fees)
 {
     out_set.clear();
@@ -217,50 +219,106 @@ static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const 
     }
 }
 
+//RANDY_COMMENTED
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet)
 {
+    //Clear the set of coins in setCoinsRet (one of the parameters to be altered for return)
     setCoinsRet.clear();
+
+    //Set the return value to 0 (also one of the parameters to be altered for return)
     nValueRet = 0;
 
+    //BITCOIN_START
     // List of values less than target
+    //BITCOIN_END
+
+    //Make an output group called lowest larger. It will hold the transaction output that's both greater than the target amount and the lowest out of all the other coins greater than the target amount.
     std::optional<OutputGroup> lowest_larger;
+
+    //Make a vector of output groups
     std::vector<OutputGroup> applicable_groups;
+
+    //Make an amount representing set to 0
     CAmount nTotalLower = 0;
 
+    //Shuffle the groups (given in parameter) into a random order
     Shuffle(groups.begin(), groups.end(), FastRandomContext());
 
+    //For every output group in groups
     for (const OutputGroup& group : groups) {
+        //If the group's value is equal to the targe value
         if (group.m_value == nTargetValue) {
+            //insert the groups output's into setCoinsRet
             util::insert(setCoinsRet, group.m_outputs);
+
+            //Add the value of the group to  the value returned
+            //This line can actually be set to nValueRet = group.m_value since there's no way this value can get altered above before getting here
+            //MAKE_PR
             nValueRet += group.m_value;
+
+            //return true
             return true;
-        } else if (group.m_value < nTargetValue + MIN_CHANGE) {
+        }
+        //If the groups value is less than the target value with the minimum change (idk why minimum change back is required, but it's represents a bitcoin/100)
+        else if (group.m_value < nTargetValue + MIN_CHANGE) {
+            //Add the group to applicable groups
             applicable_groups.push_back(group);
+            //Add the group value to totalLower
             nTotalLower += group.m_value;
-        } else if (!lowest_larger || group.m_value < lowest_larger->m_value) {
+        }
+        //If the lowest larger hasn't been defined, or the groups's value is lower than the lowest larger's
+        else if (!lowest_larger || group.m_value < lowest_larger->m_value) {
+            //Set the lowest larger to the current group
             lowest_larger = group;
         }
     }
 
+    //If the totalLower is equal to the target value
     if (nTotalLower == nTargetValue) {
+        //Iterate through the applicable groups
         for (const auto& group : applicable_groups) {
+            //insert the group's outputs into the the coins to return
             util::insert(setCoinsRet, group.m_outputs);
+            //Add the value of the group to the value returned
+            //Could alternatively just set nValueRet to nTotalLower below
+            //MAKE_PR
             nValueRet += group.m_value;
         }
+        //return true
         return true;
     }
 
+    //If the accumulated coins is less than the target value
     if (nTotalLower < nTargetValue) {
+        //And there's no coin that's larger than the target, return false
         if (!lowest_larger) return false;
+
+        //If there is a coin bigger than the target (and lower than the other bigger than the target), insert it into setCoinsRet
         util::insert(setCoinsRet, lowest_larger->m_outputs);
+
+        //Set the value of nValueRet to the lowest largest's
         nValueRet += lowest_larger->m_value;
+
+        //return true
         return true;
     }
 
+    //The below is the case where the accumulated coins/groups with amounts lower than the target exceed the target's value when summed together
+
+    //BITCOIN_START
     // Solve subset sum by stochastic approximation
+    //BITCOIN_END
+
+    //Sort the groups of coins smaller than the target in descending order
     std::sort(applicable_groups.begin(), applicable_groups.end(), descending);
+
+    //Make a character vector called vfBest
     std::vector<char> vfBest;
+
+    //Make an amount called nBest
     CAmount nBest;
+
+    //CHECKPOINT
 
     ApproximateBestSubset(applicable_groups, nTotalLower, nTargetValue, vfBest, nBest);
     if (nBest != nTargetValue && nTotalLower >= nTargetValue + MIN_CHANGE) {

@@ -807,6 +807,8 @@ const fs::path &GetDataDir(bool fNetSpecific)
     return gArgs.GetDataDirPath(fNetSpecific);
 }
 
+//RANDY_COMMENTED
+//See if the 'datadir' argument was defined and return true if it's a directory or empty
 bool CheckDataDirOption()
 {
     std::string datadir = gArgs.GetArg("-datadir", "");

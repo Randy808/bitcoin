@@ -85,6 +85,8 @@ public:
         READWRITE(obj.vtx);
     }
 
+    //RANDY_COMMENTED
+    //Clears out block by setting block header to null and clearning transactions
     void SetNull()
     {
         CBlockHeader::SetNull();
@@ -92,6 +94,8 @@ public:
         fChecked = false;
     }
 
+    //RANDY_COMMENTED
+    //Get block header gives back a type of 'CBlockHeader' which contains a subset of values from the block (nVersion, hashPrev, the merkle root, the time, the bits for difficulty, and the nonce).
     CBlockHeader GetBlockHeader() const
     {
         CBlockHeader block;

@@ -93,11 +93,15 @@ ChainstateManager& EnsureAnyChainman(const std::any& context)
     return EnsureChainman(EnsureAnyNodeContext(context));
 }
 
+//RANDY_COMMENTED
 CBlockPolicyEstimator& EnsureFeeEstimator(const NodeContext& node)
 {
+    //If the fee estimator on the node is a null ptr, then error out because the fee estimation was disabled
     if (!node.fee_estimator) {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "Fee estimation disabled");
     }
+
+    //Otherwise return the pointer to the 'CBlockPolicyEstimator'
     return *node.fee_estimator;
 }
 

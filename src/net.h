@@ -646,8 +646,10 @@ public:
     //! May not be called more than once
     void SetAddrLocal(const CService& addrLocalIn);
 
+    //RANDY_COMMENTED
     CNode* AddRef()
     {
+        //Add a counter to how many times this is being actively referenced
         nRefCount++;
         return this;
     }
@@ -882,6 +884,9 @@ public:
     void PushMessage(CNode* pnode, CSerializedNetMsg&& msg);
 
     using NodeFn = std::function<void(CNode*)>;
+
+    //RANDY_COMMENTED
+    //A method that takes ina function accepting a CNode, and runs them on all nodes from vNodes that are fully connected
     void ForEachNode(const NodeFn& func)
     {
         LOCK(cs_vNodes);

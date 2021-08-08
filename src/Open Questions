@@ -1,0 +1,18 @@
+What does a score represent in net.cpp?
+
+Where is 'SocketSendData' used?
+
+Is the blockchain reprocessed after adding a wallet in AddWallet?
+
+What does LoadWallet mean/do?
+
+net.cpp
+ThreadSocketHandler->SocketHandler->SocketSendData
+
+
+validation.cpp
+ConnectBlock->CheckBlock
+AcceptBlock->CheckBlock
+ProcessNewBlock->CheckBlock
+TestBlockValidity->CheckBlock
+VerifyDB->CheckBlock

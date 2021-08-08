@@ -22,19 +22,30 @@ public:
     m_remaining(txToLen)
     {}
 
+    //RANDY_COMMENTED
+    //This method writes nSize (unit is bytes? of) data from pointer pch into m_data and removes the size of data written from m_remaining
     void read(char* pch, size_t nSize)
     {
+        //If the size in the parameter is bigger than the m_remaining property of this TxInputStream
         if (nSize > m_remaining)
+            //error out
             throw std::ios_base::failure(std::string(__func__) + ": end of data");
 
+        //If the pch parameter is null
         if (pch == nullptr)
+            //error out
             throw std::ios_base::failure(std::string(__func__) + ": bad destination buffer");
 
+        //If the m_data property is null
         if (m_data == nullptr)
+            //throw
             throw std::ios_base::failure(std::string(__func__) + ": bad source buffer");
 
+        //Copy the pointer data into m_data for the given nSize
         memcpy(pch, m_data, nSize);
+        //Remove the moved data (nSize) from the m_remaining property
         m_remaining -= nSize;
+        //Increase the pointer address by nSize to make sure it points to the address right after what was just written
         m_data += nSize;
     }
 

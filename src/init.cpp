@@ -1064,11 +1064,33 @@ bool AppInitInterfaces(NodeContext& node)
     return true;
 }
 
+void InitializeScheduler(NodeContext& node){
+    assert(!node.scheduler);
+    node.scheduler = std::make_unique<CScheduler>();
+
+    // Start the lightweight task scheduler thread
+    node.scheduler->m_service_thread = std::thread(util::TraceThread, "scheduler", [&] { node.scheduler->serviceQueue(); });
+
+    // Gather some entropy once per minute.
+    node.scheduler->scheduleEvery([]{
+        RandAddPeriodic();
+    }, std::chrono::minutes{1});
+
+    GetMainSignals().RegisterBackgroundSignalScheduler(*node.scheduler);
+
+}
+
+//CHECKPOINT
 bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 {
+    //Making sure we have an argManager in the node context (remember that Assert just returns the value if it exists)
     const ArgsManager& args = *Assert(node.args);
+
+    //make some chain params using the global function 'Params' which returns the global chain params
     const CChainParams& chainparams = Params();
     // ********************************************************* Step 4a: application initialization
+
+    //Wtf is a pid file?
     if (!CreatePidFile(args)) {
         // Detailed error printed inside CreatePidFile().
         return false;
@@ -1111,18 +1133,8 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         StartScriptCheckWorkerThreads(script_threads);
     }
 
-    assert(!node.scheduler);
-    node.scheduler = std::make_unique<CScheduler>();
-
-    // Start the lightweight task scheduler thread
-    node.scheduler->m_service_thread = std::thread(util::TraceThread, "scheduler", [&] { node.scheduler->serviceQueue(); });
-
-    // Gather some entropy once per minute.
-    node.scheduler->scheduleEvery([]{
-        RandAddPeriodic();
-    }, std::chrono::minutes{1});
-
-    GetMainSignals().RegisterBackgroundSignalScheduler(*node.scheduler);
+    //R: Initialized things with the scheduler
+    InitializeScheduler(node);
 
     /* Register RPC commands regardless of -server setting so they will be
      * available in the GUI RPC console even if external calls are disabled.
