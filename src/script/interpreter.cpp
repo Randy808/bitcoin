@@ -1848,54 +1848,129 @@ static bool ExecuteWitnessScript(const Span<const valtype>& stack_span, const CS
     return true;
 }
 
+//RANDY_COMMENTED
 static bool VerifyTaprootCommitment(const std::vector<unsigned char>& control, const std::vector<unsigned char>& program, const CScript& script, uint256& tapleaf_hash)
 {
+    //Get the number of the control nodes (the hashes in the merkle path?) by removing the base taproot control and dividing by the node size
     const int path_len = (control.size() - TAPROOT_CONTROL_BASE_SIZE) / TAPROOT_CONTROL_NODE_SIZE;
+
+    //B_S
     //! The internal pubkey (x-only, so no Y coordinate parity).
+    //B_END
+
+    //Get the x-only pubkey thats ferived from control block's base?
     const XOnlyPubKey p{uint256(std::vector<unsigned char>(control.begin() + 1, control.begin() + TAPROOT_CONTROL_BASE_SIZE))};
+
+    //B_S
     //! The output pubkey (taken from the scriptPubKey).
+    //B_E
+
+    //Get the q public key from the program char vec
     const XOnlyPubKey q{uint256(program)};
+
+    //B_S
     // Compute the tapleaf hash.
+    //B_END
+
+    //Get the tapleaf hash by hashing the control byte masked with leaf mask along with the hash of the script
     tapleaf_hash = (CHashWriter(HASHER_TAPLEAF) << uint8_t(control[0] & TAPROOT_LEAF_MASK) << script).GetSHA256();
+
+    //B_S
     // Compute the Merkle root from the leaf and the provided path.
+    //B_END
+    //Make a 256 bit num to represent taplead_hash in 'k'
     uint256 k = tapleaf_hash;
+
+
+    //For the number of merkle paths
     for (int i = 0; i < path_len; ++i) {
+        //Initialize a hash writer
         CHashWriter ss_branch{HASHER_TAPBRANCH};
+
+        //Create a node with the control data that starts from the control base size and however many ndoes we traversed and the Taproot_control node size is used as end of span?
         Span<const unsigned char> node(control.data() + TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * i, TAPROOT_CONTROL_NODE_SIZE);
+
+        //If the the current tapleaf is less than the current node
         if (std::lexicographical_compare(k.begin(), k.end(), node.begin(), node.end())) {
+            //Add the leaf first, then the node
             ss_branch << k << node;
         } else {
+            //Otherwise hash the node first and then k
             ss_branch << node << k;
         }
+
+        //Hash the branch created at the beginning of the for loop and set it to curr tapleaf (or k)
         k = ss_branch.GetSHA256();
     }
+
+    //B_S
     // Compute the tweak from the Merkle root and the internal pubkey.
+    //B_END
+
+    //Gets the hash of the internal key and the merkeroot k
     k = (CHashWriter(HASHER_TAPTWEAK) << MakeSpan(p) << k).GetSHA256();
+
+    //B_START
     // Verify that the output pubkey matches the tweaked internal pubkey, after correcting for parity.
+    //B_END
+
+    //Just what the bitcoin comment above says^
     return q.CheckPayToContract(p, k, control[0] & 1);
 }
 
+//RANDY_COMMENTED
 static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror, bool is_p2sh)
 {
-    CScript exec_script; //!< Actually executed script (last stack item in P2WSH; implied P2PKH script in P2WPKH; leaf script in P2TR)
+    //B_START
+    //!< Actually executed script (last stack item in P2WSH; implied P2PKH script in P2WPKH; leaf script in P2TR)
+    //B_END
+
+    //Declare an exec_script
+    CScript exec_script;
+
+    //Create a stack with the witness stack
     Span<const valtype> stack{witness.stack};
+
+    //Create exec data
     ScriptExecutionData execdata;
 
+    //If the witness version is 0, it's the original pre-taproot witness
     if (witversion == 0) {
+        //If the program size is that of the script hash size (32 bytes for the program hash)
         if (program.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
+            //B_S
             // BIP141 P2WSH: 32-byte witness v0 program (which encodes SHA256(script))
+            //B_END
+
+            //And the stack size is 0
             if (stack.size() == 0) {
+                //return an error
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
             }
+
+            //Get the script butes from the stack
             const valtype& script_bytes = SpanPopBack(stack);
+
+            //Load it into CScript object
             exec_script = CScript(script_bytes.begin(), script_bytes.end());
+
+            //Create a var to hold hash of script
             uint256 hash_exec_script;
+            //Create a sha256 hasher and write the hash of what was loaded into the CScript from the stack into hash_exec_script
             CSHA256().Write(exec_script.data(), exec_script.size()).Finalize(hash_exec_script.begin());
+
+            //If the hashed version of what was read matches the program data (supoosed to be hash of script)
             if (memcmp(hash_exec_script.begin(), program.data(), 32)) {
+                //Return an error saying it doesn't match
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
             }
+
+            //then execute the witness script with the stack we have, the exec_script, flasgs, etc..
             return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::WITNESS_V0, checker, execdata, serror);
-        } else if (program.size() == WITNESS_V0_KEYHASH_SIZE) {
+        }
+
+        //CHECKPOINT
+        else if (program.size() == WITNESS_V0_KEYHASH_SIZE) {
             // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
             if (stack.size() != 2) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness
@@ -1905,176 +1980,379 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
         } else {
             return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH);
         }
+        //RANDY_RESUMED
     } else if (witversion == 1 && program.size() == WITNESS_V1_TAPROOT_SIZE && !is_p2sh) {
+        //RANDY_COMMENTED
+        //B_START
         // BIP341 Taproot: 32-byte non-P2SH witness v1 program (which encodes a P2C-tweaked pubkey)
+        //B_END
+
+        //if taproot flag is not on then return success
         if (!(flags & SCRIPT_VERIFY_TAPROOT)) return set_success(serror);
+
+        //If the stack is 0, set an erorr
         if (stack.size() == 0) return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
+
+        //If the stack has size 2 or more and the last thing in the stack is not empty AND equals the ANNEX_TAG (hard value 0x50)
         if (stack.size() >= 2 && !stack.back().empty() && stack.back()[0] == ANNEX_TAG) {
+
+            //B_S
             // Drop annex (this is non-standard; see IsWitnessStandard)
+            //B_END
+
+            //Remove the annex elements from the stack and store the reference in the annex valtype variable
             const valtype& annex = SpanPopBack(stack);
+
+            //Store the annex hash in execdata
             execdata.m_annex_hash = (CHashWriter(SER_GETHASH, 0) << annex).GetSHA256();
+
+            //Set the annex presence on the execdata to true
             execdata.m_annex_present = true;
         } else {
+            //Otherwise note the annex isn't there
             execdata.m_annex_present = false;
         }
+
+        //Say that the annext execution initialization is done
         execdata.m_annex_init = true;
+
+        //If the stack is of size 1
         if (stack.size() == 1) {
+            //B_START
             // Key path spending (stack size is 1 after removing optional annex)
+            //B_END
+
+            //Check the schnorr signature of the the stack element while also passing in program (which is), the sigversion, and the execdata
             if (!checker.CheckSchnorrSignature(stack.front(), program, SigVersion::TAPROOT, execdata, serror)) {
+                //Return false if the sig check failed
                 return false; // serror is set
             }
+
+            //Otherwsie set success to empty err
             return set_success(serror);
         } else {
+
+            //B_S
             // Script path spending (stack size is >1 after removing optional annex)
+            //B_END
+
+            //Pop off the control bytes (since stack holds vectors of chars)
             const valtype& control = SpanPopBack(stack);
+
+            //Pop of the script bytes
             const valtype& script_bytes = SpanPopBack(stack);
+
+            //Set exec_script to a cscript that takes in the script_bytes
             exec_script = CScript(script_bytes.begin(), script_bytes.end());
+
+            //If the control bytes size is smaller than the smallest acceptable size or bigger than the bigest, *and* the control size expansion from the base size is not a multiple of a control node size
             if (control.size() < TAPROOT_CONTROL_BASE_SIZE || control.size() > TAPROOT_CONTROL_MAX_SIZE || ((control.size() - TAPROOT_CONTROL_BASE_SIZE) % TAPROOT_CONTROL_NODE_SIZE) != 0) {
+                //set an error
                 return set_error(serror, SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE);
             }
+
+            //If the taproot verification committment fails with the control read in, the program, the exec_script read from the stack, and the empty tapleaf hash that will be populated
             if (!VerifyTaprootCommitment(control, program, exec_script, execdata.m_tapleaf_hash)) {
+                //return an error
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
             }
+
+            //Set the taplead hash init property to true
             execdata.m_tapleaf_hash_init = true;
+
+            //If the control first byte indicates leaf tapscript
             if ((control[0] & TAPROOT_LEAF_MASK) == TAPROOT_LEAF_TAPSCRIPT) {
+                //CHECKPOINT
+                // _START
                 // Tapscript (leaf version 0xc0)
+                //B_END
+
+                //Get witness serialization size with the validation weight offset
                 execdata.m_validation_weight_left = ::GetSerializeSize(witness.stack, PROTOCOL_VERSION) + VALIDATION_WEIGHT_OFFSET;
+
+                //Set the execdtaa's left_init to true since the left weight has been initialzied
                 execdata.m_validation_weight_left_init = true;
+
+                //Return with executing the witenss script like usual using whatever is on the stack, the exec_script, some flags, and the sig checker
+                //Execdata has context like sizes of stack, whether the init was used, the asset hash, etc
                 return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::TAPSCRIPT, checker, execdata, serror);
             }
+
+            //If the flag to discourage taproot version is on
             if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION) {
+                //Set an error
                 return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TAPROOT_VERSION);
             }
+            //otherwise set the success
             return set_success(serror);
         }
-    } else {
+    } else { //else if this doesn't have the correct data length after the witness version
+        //if the flags say discourage then set an error
         if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
             return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
         }
+        //B_START
         // Other version/size/p2sh combinations return true for future softfork compatibility
+        //B_END
+
+        //Just return true
         return true;
     }
+    //B_S
     // There is intentionally no return statement here, to be able to use "control reaches end of non-void function" warnings to detect gaps in the logic above.
+    //B_END
 }
 
+//RANDY_COMMENTED
+//EValuates script doing some special checks and processing for p2sh and witness txs
 bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const CScriptWitness* witness, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror)
 {
+
+    //Create an empty witness script
     static const CScriptWitness emptyWitness;
+    //If the witness passed into the param is equal to the nullptr anyway
     if (witness == nullptr) {
+        //set it equal to ref for empty witness so at least something is defined
         witness = &emptyWitness;
     }
+
+    //Set hadWitness to false. This will be true if the scriptpubkey indicates it should be solved with witness (and the flag to verify witnesses is on ofc)
     bool hadWitness = false;
 
+    //Set error prematurely to unknown error
     set_error(serror, SCRIPT_ERR_UNKNOWN_ERROR);
 
+    //If the flags passed in say that the scriptsig can only be a push of bytes and the scriptsig isn't a push (an OP code of OP_N where N is less than OP_16)
     if ((flags & SCRIPT_VERIFY_SIGPUSHONLY) != 0 && !scriptSig.IsPushOnly()) {
+        //then error
         return set_error(serror, SCRIPT_ERR_SIG_PUSHONLY);
     }
 
+    //B_START
     // scriptSig and scriptPubKey must be evaluated sequentially on the same stack
     // rather than being simply concatenated (see CVE-2010-5141)
-    std::vector<std::vector<unsigned char> > stack, stackCopy;
+    //B_END
+
+    //Create 2 stacks
+    std::vector<std::vector<unsigned char>> stack, stackCopy;
+
+    //Evaluate the script for the scriptSig first as per the bitcoin comment above and if it fails...
     if (!EvalScript(stack, scriptSig, flags, checker, SigVersion::BASE, serror))
+        //B_START
         // serror is set
+        //B_END
+
+        //Return false
         return false;
+
+    //If the flag says it can script verify pay 2 script hash
     if (flags & SCRIPT_VERIFY_P2SH)
+        //Set the stackCopy to the stack
         stackCopy = stack;
+
+    //Then evaluate the script of scriptpubkey and if it fails...
     if (!EvalScript(stack, scriptPubKey, flags, checker, SigVersion::BASE, serror))
+        //B_START
         // serror is set
+        //B_END
+        //Return false
         return false;
+
+    //If the stack is empty
     if (stack.empty())
-        return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
-    if (CastToBool(stack.back()) == false)
+        //Set an error
         return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
 
+    //If the stack has false on it
+    if (CastToBool(stack.back()) == false)
+        //return an error
+        return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
+
+    //B_START
     // Bare witness programs
+    //B_END
+
+    //Get the witness version
     int witnessversion;
+
+    //Initialize a vec for witness program
     std::vector<unsigned char> witnessprogram;
+
+    //If the flag says to verify a witness
     if (flags & SCRIPT_VERIFY_WITNESS) {
+        //If the scriptPubKey is a witness compatible with witness a version, then extract the version into witnessversion and the scriptpubkey without witness markers into witnessprogram
         if (scriptPubKey.IsWitnessProgram(witnessversion, witnessprogram)) {
+            //Set hadWitness to true
             hadWitness = true;
+
+            //If the scriptSig was *not* empty
             if (scriptSig.size() != 0) {
+                //B_START
                 // The scriptSig must be _exactly_ CScript(), otherwise we reintroduce malleability.
+                //B_END
+                //Return an error
                 return set_error(serror, SCRIPT_ERR_WITNESS_MALLEATED);
             }
+
+            //If the verification of the witness program fails (wi)
             if (!VerifyWitnessProgram(*witness, witnessversion, witnessprogram, flags, checker, serror, /* is_p2sh */ false)) {
+                //return false
                 return false;
             }
+
+            //B_START
             // Bypass the cleanstack check at the end. The actual stack is obviously not clean
             // for witness programs.
+            //B_END
+
+            //Resize the stack to 1 item
             stack.resize(1);
         }
     }
 
+    //B_START
     // Additional validation for spend-to-script-hash transactions:
+    //B_END
+
+    //If the flag says verify p2sh and the scriptpubkey is paytoscripthash
     if ((flags & SCRIPT_VERIFY_P2SH) && scriptPubKey.IsPayToScriptHash())
     {
+        //B_START
         // scriptSig must be literals-only or validation fails
+        //B_END
+
+        //If the scriptSig is not push only
         if (!scriptSig.IsPushOnly())
+            //Then set an erorr because it can only be push only for p2sh
             return set_error(serror, SCRIPT_ERR_SIG_PUSHONLY);
 
+        //B_START
         // Restore stack.
+        //B_END
+
+        //Swap the stack with the stackCopy (to get the original unmodified stack again)
         swap(stack, stackCopy);
 
+        //B_START
         // stack cannot be empty here, because if it was the
         // P2SH  HASH <> EQUAL  scriptPubKey would be evaluated with
         // an empty stack and the EvalScript above would return false.
+        //B_END
+
+        //Make sure the stack isn't empty (the stack copy was made after eval script was called on script sig)
         assert(!stack.empty());
 
+        //Get the serialized pubkey of stack
         const valtype& pubKeySerialized = stack.back();
+
+        //Get the pubkey as script?
         CScript pubKey2(pubKeySerialized.begin(), pubKeySerialized.end());
+
+        //Pop whatever is on stack
         popstack(stack);
 
+        //If the eval of script fails with pubkey and stack
         if (!EvalScript(stack, pubKey2, flags, checker, SigVersion::BASE, serror))
+            //B_START
             // serror is set
+            //B_END
+
+            //return false
             return false;
+
+        //If the stack is empty
         if (stack.empty())
-            return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
-        if (!CastToBool(stack.back()))
+            //Set an erorr
             return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
 
+        //If the stack can't be cast to bool
+        if (!CastToBool(stack.back()))
+            //return err
+            return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
+
+        //B_START
         // P2SH witness program
+        //B_END
+
+        //If the flag is set to verify witness
         if (flags & SCRIPT_VERIFY_WITNESS) {
+            //AND if the extracted pubkey is a witness program (because the scriptsig contains both scriptpubkey and solution)
             if (pubKey2.IsWitnessProgram(witnessversion, witnessprogram)) {
+                //Then mark that it has a witness
                 hadWitness = true;
+
+                //If the scriptSig doesn't equal the addition of the pubkey
                 if (scriptSig != CScript() << std::vector<unsigned char>(pubKey2.begin(), pubKey2.end())) {
+                    //B_START
                     // The scriptSig must be _exactly_ a single push of the redeemScript. Otherwise we
                     // reintroduce malleability.
+                    //B_END
+
+                    //Set an error
                     return set_error(serror, SCRIPT_ERR_WITNESS_MALLEATED_P2SH);
                 }
+
+                //If the witness could not be verified
                 if (!VerifyWitnessProgram(*witness, witnessversion, witnessprogram, flags, checker, serror, /* is_p2sh */ true)) {
+
+                    //Return false
                     return false;
                 }
+                //B_START
                 // Bypass the cleanstack check at the end. The actual stack is obviously not clean
                 // for witness programs.
+                //B_END
+
+                //Change the stack for witness
                 stack.resize(1);
             }
         }
     }
 
+    //B_START
     // The CLEANSTACK check is only performed after potential P2SH evaluation,
     // as the non-P2SH evaluation of a P2SH script will obviously not result in
     // a clean stack (the P2SH inputs remain). The same holds for witness evaluation.
+    //B_END
+
+    //See if the flag verifieds a clean stack
     if ((flags & SCRIPT_VERIFY_CLEANSTACK) != 0) {
+        //B_START
         // Disallow CLEANSTACK without P2SH, as otherwise a switch CLEANSTACK->P2SH+CLEANSTACK
         // would be possible, which is not a softfork (and P2SH should be one).
+        //B_END
+
+        //Assert that in the case where we look for clean stack we also enable p2sh and witness
         assert((flags & SCRIPT_VERIFY_P2SH) != 0);
         assert((flags & SCRIPT_VERIFY_WITNESS) != 0);
+
+        //If stack isn't 1
         if (stack.size() != 1) {
+            //make err
             return set_error(serror, SCRIPT_ERR_CLEANSTACK);
         }
     }
 
+    //If the flag says verofy witness
     if (flags & SCRIPT_VERIFY_WITNESS) {
+        //B_START
         // We can't check for correct unexpected witness data if P2SH was off, so require
         // that WITNESS implies P2SH. Otherwise, going from WITNESS->P2SH+WITNESS would be
         // possible, which is not a softfork.
+        //B_END
+
+        //Assert that the p2sh is also enabled
         assert((flags & SCRIPT_VERIFY_P2SH) != 0);
+
+        //if there was *no* witness and the witness program was not null
         if (!hadWitness && !witness->IsNull()) {
+
+            //set an error
             return set_error(serror, SCRIPT_ERR_WITNESS_UNEXPECTED);
         }
     }
 
+    //otherwise set success
     return set_success(serror);
 }
 

@@ -233,25 +233,39 @@ bool CScript::IsWitnessProgram(int& version, std::vector<unsigned char>& program
     return false;
 }
 
+//RANDY_COMMNETED
+//Makes sure opcodes on script are *all* above OP_16
 bool CScript::IsPushOnly(const_iterator pc) const
 {
+    //While the iterator isn't at the end
     while (pc < end())
     {
+        //Declare an opcode
         opcodetype opcode;
+        //If the opcode can't be retrieved
         if (!GetOp(pc, opcode))
+            //return false ; should be continuous opcoded
             return false;
+
+        //B_START
         // Note that IsPushOnly() *does* consider OP_RESERVED to be a
         // push-type opcode, however execution of OP_RESERVED fails, so
         // it's not relevant to P2SH/BIP62 as the scriptSig would fail prior to
         // the P2SH special validation code being executed.
+        //B_END
+
+        //Op code should be less than or equal to OP_16 for all push transactions
         if (opcode > OP_16)
             return false;
     }
     return true;
 }
 
+//RANDY_COMMENTED
+//Just calls an innerPushOnlu
 bool CScript::IsPushOnly() const
 {
+    //Calls inner push onlu with the begin pointer
     return this->IsPushOnly(begin());
 }
 

@@ -38,6 +38,10 @@ std::string StringForFeeEstimateHorizon(FeeEstimateHorizon horizon)
     assert(false);
 }
 
+
+//RANDY_COMMENTED
+//Pretty much a private class
+//B_START
 /**
  * We will instantiate an instance of this class to track transactions that were
  * included in a block. We will lump transactions into a bucket according to their
@@ -46,6 +50,7 @@ std::string StringForFeeEstimateHorizon(FeeEstimateHorizon horizon)
  * The tracking of unconfirmed (mempool) transactions is completely independent of the
  * historical tracking of transactions that have been confirmed in a block.
  */
+//B_END
 class TxConfirmStats
 {
 private:
@@ -75,7 +80,12 @@ private:
 
     double decay;
 
+    //B_START
     // Resolution (# of blocks) with which confirmations are tracked
+    //B_END
+
+    //Gets initialized by constructor 'scale(_scale)'
+    //scale is how many confirmations per period to track. Period number is taken from feestats construxtor
     unsigned int scale;
 
     // Mempool counts of outstanding transactions
@@ -133,7 +143,10 @@ public:
                              double minSuccess, unsigned int nBlockHeight,
                              EstimationResult* result = nullptr) const;
 
+    //B_START
     /** Return the max number of confirms we're tracking */
+    //B_END
+    //The scale is defined in the CBLockPolicy's constructor for each feestats and the confAVg's size should be set equal to the period. So we have as many confirmations as we have for scale and periods
     unsigned int GetMaxConfirms() const { return scale * confAvg.size(); }
 
     /** Write state of estimation data to a file*/
@@ -179,6 +192,7 @@ TxConfirmStats::TxConfirmStats(const std::vector<double>& defaultBuckets,
 }
 
 //RANDY_COMMENTED
+//**Only called from 'Read' and on TxConfirmStats constructor
 //Resize the unconfTxs to represent all the values of confirmations there could be and resize the vector at every index to the number of newbuckets there are. Then resize the oldUnconfTxs to the number of newbuckets.
 void TxConfirmStats::resizeInMemoryCounters(size_t newbuckets)
 {
@@ -199,17 +213,30 @@ void TxConfirmStats::resizeInMemoryCounters(size_t newbuckets)
     oldUnconfTxs.resize(newbuckets);
 }
 
+
+//RANDY_COMMENTED
+//For every bucket of the given period (I'll call period confimration), clear the current unconfirmed transactions
+//B_START
 // Roll the unconfirmed txs circular buffer
+//B_END
 void TxConfirmStats::ClearCurrent(unsigned int nBlockHeight)
 {
+    //For every bucket index (not bucket *of* index)
     for (unsigned int j = 0; j < buckets.size(); j++) {
+        //Add the unconfirmed transactions from n (the blockheight modulo'd with the currentUnconfTx size) and the bucket j
+        //to the old unconfirmed transactions of bucket j
         oldUnconfTxs[j] += unconfTxs[nBlockHeight % unconfTxs.size()][j];
+
+        //Set the unconfirmed transaction bucket we just emptied to 0
+        //unconfTx should have a length of period*scale (or result of GetMaxConfirms(s))
+        //We're setting the blockheight in the first period to 0
         unconfTxs[nBlockHeight % unconfTxs.size()][j] = 0;
     }
 }
 
 
 //RANDY_COMMENTED
+//**Called from CBlockPolicyEstimator::processBlockTx
 //Increment the bucket value count (with bucket index matching the feerate) for all periods represented by 'blocksToConfirm'. Also adds feerate to corresponding bucket index value in m_feerate_avg and increments txCtAvg at the same index.
 void TxConfirmStats::Record(int blocksToConfirm, double feerate)
 {
@@ -221,7 +248,8 @@ void TxConfirmStats::Record(int blocksToConfirm, double feerate)
     if (blocksToConfirm < 1)
         return;
 
-    //Calculate periodsToConfirm by scaling the 'blocksToConfirm' parameter down by 'scale'. The blocksToConfirm has 'scale - 1' added to it so the periodsToConfirm integer will start at '1' (since 'blocksToConfim' must be at least 1)
+    //Calculate periodsToConfirm by scaling the 'blocksToConfirm' parameter down by 'scale'. The blocksToConfirm has 'scale' added to it so the periodsToConfirm integer will start at '1' (since 'blocksToConfim' must be at least 1, and if the blocksToConfirm is set to 1 then the whole expression will resolve to 1).
+    //blocksToConfirm has to be a multiple of (scale - 1) to get more periods to confirm
     int periodsToConfirm = (blocksToConfirm + scale - 1) / scale;
 
     //Make the bucketindex to increment equal to bucketMap's lower bound for the feerate given in the parameter
@@ -241,15 +269,27 @@ void TxConfirmStats::Record(int blocksToConfirm, double feerate)
     m_feerate_avg[bucketindex] += feerate;
 }
 
+
+//RANDY_COMMENTED
+//Multiply every value in confAvg and failAvg (in every 2d index) by the decay
 void TxConfirmStats::UpdateMovingAverages()
 {
+    //Assert that the confAvg first domension size (confirmations tracked for buckets) is equal to the failAvg size
     assert(confAvg.size() == failAvg.size());
+
+    //For every index up to the bucket size
     for (unsigned int j = 0; j < buckets.size(); j++) {
+        //And for ever confAvg index
         for (unsigned int i = 0; i < confAvg.size(); i++) {
+            //Multiply the confAvg by the decay
             confAvg[i][j] *= decay;
+            //And multiply the failAvg by the decay
             failAvg[i][j] *= decay;
         }
+
+        //Multiply the m_feerate_avg for the bucket j by the decay
         m_feerate_avg[j] *= decay;
+        //Multiply the tansaction count average for the bucket j by decay
         txCtAvg[j] *= decay;
     }
 }
@@ -322,7 +362,7 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
     //Initialize foundAnswer to false
     bool foundAnswer = false;
 
-    //Initialize bins to the unconfTx size (which should equal the max number of confirmations the 'unconfirmed' transactions have)
+    //Initialize bins to the unconfTx size (which should equal the max number of confirmation periods the 'unconfirmed' transactions have)
     unsigned int bins = unconfTxs.size();
 
     //Set that we're looking for a newBucketRange to true
@@ -668,6 +708,7 @@ unsigned int TxConfirmStats::NewTx(unsigned int nBlockHeight, double val)
     unsigned int bucketindex = bucketMap.lower_bound(val)->second;
 
     //Gets the blockIndex the transaction should belong to by assigning it to an unconfTxs index derived from the blockheight
+    //unconfTxs.size() = the size of the *first* dimension of the unconfTxs 2d vector. It represents how many possible confirmations there could be for current block recorded and processed?
     unsigned int blockIndex = nBlockHeight % unconfTxs.size();
 
     //Increment the unconfirmed transactions in that blockIndex and range (bucketIndex)
@@ -720,6 +761,8 @@ void TxConfirmStats::removeTx(unsigned int entryHeight, unsigned int nBestSeenHe
     } else {
         //Calculate the blockIndex which is the entryHeight modulo'd by unconfTxs
         //Why modulo?
+        //modulo to get the bucket from the correct period
+        //Things aren't calculated using blocks in unconfTxs, just periods
         unsigned int blockIndex = entryHeight % unconfTxs.size();
 
         //If the value at unconfTxs is greater than 0
@@ -788,7 +831,9 @@ bool CBlockPolicyEstimator::removeTx(uint256 hash, bool inBlock)
 }
 
 //RANDY_COMMENTED (SUGGESTION: Make explicitly public)
+//Constructor
 //Initializes 'buckets' with the thresholds for each bucket, and initialized 'bucketMap' with (threshold,bucketIndexe) key values. fee_stats, long_stats, and short_stats are then initialized as pointers to TxConfirmStats which are initialized using the same bucket values but different constant values. The fee estimae file name is then attempted to be read and a log is made if the file can't be read (although I imagine it will be created later on which prevents any exception from being thrown, etc)
+//ALL PROPERTIES ARE SET TO 0 BESIDES IMPORTANT ONES ABOVE
 CBlockPolicyEstimator::CBlockPolicyEstimator()
     : nBestSeenHeight(0), firstRecordedHeight(0), historicalFirst(0), historicalBest(0), trackedTxs(0), untrackedTxs(0)
 {
@@ -838,12 +883,15 @@ CBlockPolicyEstimator::CBlockPolicyEstimator()
     }
 }
 
+//RANDY_COMMENTED
+//Just a declared destructor with no logic
 CBlockPolicyEstimator::~CBlockPolicyEstimator()
 {
 }
 
 
 //RANDY_COMMENTED
+//*NOT* called from processBlockTx. Called directly from mempool (txmempool.cpp)
 //If the transaction is not already in the CBlockPolicyEstimator's mapMemPoolTxs, is equal to the nBestSeenHeight, and the validFeeEstimate is true, then add the mempool entry into mapMemPoolTxs. The key is the entry transaction's hash and the properties that are initialized for the value in the mapMemPoolTxs entry is the height and the bucketindex calculated by 'NewTx' which is used to set the values of bucketindex2 and bucketindex3 all to the same thing as bucketindex.
 void CBlockPolicyEstimator::processTransaction(const CTxMemPoolEntry& entry, bool validFeeEstimate)
 {
@@ -928,69 +976,128 @@ void CBlockPolicyEstimator::processTransaction(const CTxMemPoolEntry& entry, boo
     //All bucket indexes should equal the same thing as seen by assertions
 }
 
+
+//RANDY_COMMENTED
+//**called from processBlock
+//Get the difference in block height from the entry and the best seen and use that difference (called 'blocksToConfirm') to add the 'feerate' of that transaction (which contains the fee on the tx along with its size) to every feestats using 'Record'
+//FALSE if transaction was never put in mempool txs OR if blcoksToConfirm shows we already processed block
 bool CBlockPolicyEstimator::processBlockTx(unsigned int nBlockHeight, const CTxMemPoolEntry* entry)
 {
+    //If we're not able to remove the transacton passed in as mempool entry
     if (!removeTx(entry->GetTx().GetHash(), true)) {
+        //B_START
         // This transaction wasn't being tracked for fee estimation
+        //B_END
+
+        //Return false
         return false;
     }
 
+    //B_START
     // How many blocks did it take for miners to include this transaction?
     // blocksToConfirm is 1-based, so a transaction included in the earliest
     // possible block has confirmation count of 1
+    //B_END
+
+    //Get the blocksToConfirm by getting the difference between the block height recorded and the blockheight passed in from the entry
     int blocksToConfirm = nBlockHeight - entry->GetHeight();
+
+    //If the blocksToConfirm is less than or equal to 0 (the tx is in an already processed block?)
     if (blocksToConfirm <= 0) {
+        //B_START
         // This can't happen because we don't process transactions from a block with a height
         // lower than our greatest seen height
+        //B_END
+
+        //Log and return false
         LogPrint(BCLog::ESTIMATEFEE, "Blockpolicy error Transaction had negative blocksToConfirm\n");
         return false;
     }
 
+    //B_START
     // Feerates are stored and reported as BTC-per-kb:
+    //B_END
+
+    //Create a new feeRate with the fee from the entry and a tx size from the entry
     CFeeRate feeRate(entry->GetFee(), entry->GetTxSize());
 
+    //Record the fee rate in every one of the fee stats
     feeStats->Record(blocksToConfirm, (double)feeRate.GetFeePerK());
     shortStats->Record(blocksToConfirm, (double)feeRate.GetFeePerK());
     longStats->Record(blocksToConfirm, (double)feeRate.GetFeePerK());
+
+    //reurn true
     return true;
 }
 
+//RANDY_COMMENTED
+//Called from mempool just like processTransaction('minerPolicyEstimator->processBlock(nBlockHeight, entries);' in txmempool.cpp)
+//Resets and adds the value of the 'old' unconf transaction counts onto oldUnconfTxs (with clearCurrent), decays confAvg and failAvg (with updateMovingAvg), processes block txs in mempool entries param (using method above 'processBlockTx'), sets 'firstRecordedHeight' (which should be set to first block processed), logs, and Sets tracked and untracked transactions to 0
 void CBlockPolicyEstimator::processBlock(unsigned int nBlockHeight,
                                          std::vector<const CTxMemPoolEntry*>& entries)
 {
+    //Lock the estimator mutex
     LOCK(m_cs_fee_estimator);
+
+    //If the blockheight isn't best, then return
     if (nBlockHeight <= nBestSeenHeight) {
+        //B_START
         // Ignore side chains and re-orgs; assuming they are random
         // they don't affect the estimate.
         // And if an attacker can re-org the chain at will, then
         // you've got much bigger problems than "attacker can influence
         // transaction fees."
+        //B_END
         return;
     }
 
+    //B_START
     // Must update nBestSeenHeight in sync with ClearCurrent so that
     // calls to removeTx (via processBlockTx) correctly calculate age
     // of unconfirmed txs to remove from tracking.
+    //B_END
+
+    //Set the best height to current
     nBestSeenHeight = nBlockHeight;
 
+
+    //B_START
     // Update unconfirmed circular buffer
-    feeStats->ClearCurrent(nBlockHeight);
+    //B_END
+
+    //Clear the uncornfirmed transaction count for every bucket in 'nBlockHeight's confirmation period
+    feeStats->ClearCur rent(nBlockHeight);
     shortStats->ClearCurrent(nBlockHeight);
     longStats->ClearCurrent(nBlockHeight);
 
+    //B_START
     // Decay all exponential averages
+    //B_END
+
+    //Delay every 2d index value of each feestat's confAvg and failAvg
     feeStats->UpdateMovingAverages();
     shortStats->UpdateMovingAverages();
     longStats->UpdateMovingAverages();
 
+    //Set counted to 0. This is a count of all tx processed successfully
     unsigned int countedTxs = 0;
+
+    //B_START
     // Update averages with data points from current block
+    //B_END
+
+    //go through every transaction
     for (const auto& entry : entries) {
+        //If the block tx is processed successfully
+        //Block entry would *not* be processed correctly if transaction was never put in mempool txs OR if blcoksToConfirm shows we already processed block
         if (processBlockTx(nBlockHeight, entry))
+            //Add onto countedTx
             countedTxs++;
     }
 
+    //If the firstRecordedHeight is 0 and we processed some transactions (this is our first time running fee estimation)
     if (firstRecordedHeight == 0 && countedTxs > 0) {
+        //Reset the firstRecorded height to the best height (which should be set to the current block since this should only get hit once where there was a processed block)
         firstRecordedHeight = nBestSeenHeight;
         LogPrint(BCLog::ESTIMATEFEE, "Blockpolicy first recorded height %u\n", firstRecordedHeight);
     }
@@ -1000,87 +1107,152 @@ void CBlockPolicyEstimator::processBlock(unsigned int nBlockHeight,
              countedTxs, entries.size(), trackedTxs, trackedTxs + untrackedTxs, mapMemPoolTxs.size(),
              MaxUsableEstimate(), HistoricalBlockSpan() > BlockSpan() ? "historical" : "current");
 
+    //Set tracked and untracked transactions to 0
     trackedTxs = 0;
     untrackedTxs = 0;
 }
 
+//RANDY_COMMENYED
+//Calls estimateRawFee with validation on confTarget and hard-coded values for estimateRawfee
 CFeeRate CBlockPolicyEstimator::estimateFee(int confTarget) const
 {
+    //B_START
     // It's not possible to get reasonable estimates for confTarget of 1
+    //B_END
+
+    //If the confirmation target is less than or equal to 1
     if (confTarget <= 1)
+        //return a fee rate of 0 (since should be invalid)
+        //Maybe log here?
         return CFeeRate(0);
 
+    ///Gets the median val of the stats object chosen by the horizon, and returns it as the fee
     return estimateRawFee(confTarget, DOUBLE_SUCCESS_PCT, FeeEstimateHorizon::MED_HALFLIFE);
 }
 
+
+//RANDY_COMMENTED
+//Hardcoded to have successThreshold of ~95% (defiend in DOUBLE_SUCCESS_PCT const) and feeHorizon of 1 (from estmatesmartFee)
+//Gets the median val of the stats object chosen by the horizon, and returns it as the fee
 CFeeRate CBlockPolicyEstimator::estimateRawFee(int confTarget, double successThreshold, FeeEstimateHorizon horizon, EstimationResult* result) const
 {
+    //Set a tx stats pointer to null
     TxConfirmStats* stats = nullptr;
+
+    //Set sufficientTxs to .1
     double sufficientTxs = SUFFICIENT_FEETXS;
+
+    //switch horizon (which can only be 1 as of now unless set directly through rpc command 'estimateRawFee' that goes straight to this method)
     switch (horizon) {
+
+    //if the halflife is short
     case FeeEstimateHorizon::SHORT_HALFLIFE: {
+        //Get the short fee stats
         stats = shortStats.get();
+        //Set sufficientTxs to whatever is appropriate
         sufficientTxs = SUFFICIENT_TXS_SHORT;
         break;
     }
     case FeeEstimateHorizon::MED_HALFLIFE: {
+        //get the stats for feeStats
         stats = feeStats.get();
         break;
     }
     case FeeEstimateHorizon::LONG_HALFLIFE: {
+        //get the stats for longStats
         stats = longStats.get();
         break;
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
+    //B_START
+    // no default case, so the compiler can warn about missing cases
+    //B_END
     assert(stats);
 
+    //lock the estimator
     LOCK(m_cs_fee_estimator);
+
+    //B_START
     // Return failure if trying to analyze a target we're not tracking
+    //B_END
+
+    //If the confTarget is less than 0 (condition can only be hit using rpc), or if the confirmation target is outside our confirmationPeeriod then return a 0 feerate (invalid or in-error)
     if (confTarget <= 0 || (unsigned int)confTarget > stats->GetMaxConfirms())
         return CFeeRate(0);
+
+    //If sucess threshold is greater than 1 then return 0 too because there can be no threshold better than 100%
     if (successThreshold > 1)
         return CFeeRate(0);
 
+    //Get median val of chosen stats using the target and sufficientTx threshold and other stuff
     double median = stats->EstimateMedianVal(confTarget, sufficientTxs, successThreshold, nBestSeenHeight, result);
 
+    //If the median is less than 0 then return invalid fee of 0
     if (median < 0)
         return CFeeRate(0);
 
+    //If median is 0 or greater return it as the rate
     return CFeeRate(llround(median));
 }
 
+//RANDY_COMMENTED
+//Returns the max confirms of the stats object corresponding to horizon in the param
 unsigned int CBlockPolicyEstimator::HighestTargetTracked(FeeEstimateHorizon horizon) const
 {
+    //lock the fee estomator
     LOCK(m_cs_fee_estimator);
+    //Swithc on the horizon param
     switch (horizon) {
+    //If the horizon is short
     case FeeEstimateHorizon::SHORT_HALFLIFE: {
+        //Return the max confirmations (confirmation periods) of short stats
         return shortStats->GetMaxConfirms();
     }
+    //If the horizon is halflife
     case FeeEstimateHorizon::MED_HALFLIFE: {
+        //Return max confirms of regular
         return feeStats->GetMaxConfirms();
     }
+    //If long
     case FeeEstimateHorizon::LONG_HALFLIFE: {
+        //Return max confirms of logn
         return longStats->GetMaxConfirms();
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
+    //B_START
+    // no default case, so the compiler can warn about missing cases
+    //B_END
     assert(false);
 }
 
+//RANDY_COMMENTED
+//Gets how many blocks has been processed by this blockpolicy since first recorded block
 unsigned int CBlockPolicyEstimator::BlockSpan() const
 {
+    //if the first recorded height is 0 (we haven't processed a block yet), return 0
     if (firstRecordedHeight == 0) return 0;
+
+    //Assert the best seen height is greater than or equal tot he first recorded
     assert(nBestSeenHeight >= firstRecordedHeight);
 
+    //Return how many blocks we've seen since firstRecorded
     return nBestSeenHeight - firstRecordedHeight;
 }
 
+//RANDY_COMMENTED
+//Returns the difference between hisotical best and first as long as diff between best seen and historical best isnt too great
 unsigned int CBlockPolicyEstimator::HistoricalBlockSpan() const
 {
+    //historicalFirst seems to be set in ::Read. If it's 0, return 0
     if (historicalFirst == 0) return 0;
+
+
     assert(historicalBest >= historicalFirst);
 
+    //If the nBestSeenHeight is too far away from historicalBest (OLDEST_ESTIMATE_HISTORY defining too far away), return 0
     if (nBestSeenHeight - historicalBest > OLDEST_ESTIMATE_HISTORY) return 0;
 
+    //Return the difference in blocks of historicalBest and first
     return historicalBest - historicalFirst;
 }
 

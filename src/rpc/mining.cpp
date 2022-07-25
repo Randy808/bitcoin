@@ -1059,6 +1059,8 @@ static RPCHelpMan submitheader()
     };
 }
 
+//RANDY_COMMENTED
+//CHECKPOINT
 static RPCHelpMan estimatesmartfee()
 {
     return RPCHelpMan{"estimatesmartfee",

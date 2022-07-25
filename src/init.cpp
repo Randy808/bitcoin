@@ -1183,9 +1183,17 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     node.connman = std::make_unique<CConnman>(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max()), *node.addrman, args.GetBoolArg("-networkactive", true));
 
     assert(!node.fee_estimator);
+
+    //RANDY_COMMENTED_START
+
+    //B_START
     // Don't initialize fee estimation with old data if we don't relay transactions,
     // as they would never get updated.
+    //B_END
+
+    //Only initialize if we relay transsactions
     if (!ignores_incoming_txs) node.fee_estimator = std::make_unique<CBlockPolicyEstimator>();
+    //RANDY_COMMENTED_END
 
     assert(!node.mempool);
     int check_ratio = std::min<int>(std::max<int>(args.GetArg("-checkmempool", chainparams.DefaultConsistencyChecks() ? 1 : 0), 0), 1000000);

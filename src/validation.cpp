@@ -624,7 +624,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // Coinbase is only valid in a block, not as a loose transaction
     //BITCOIN_END
 
-    //If the transaction is a coinbase
+    //If the transaction is a coinbase error out since individual coinbase do not go into mempool
     if (tx.IsCoinBase())
         //Return whatever value is returned by the state's Invalid method
         return state.Invalid(TxValidationResult::TX_CONSENSUS, "coinbase");
@@ -662,7 +662,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     assert(std::addressof(::ChainActive()) == std::addressof(m_active_chainstate.m_chain));
 
     //CHECKPOINT
-   
+
     if (!CheckFinalTx(m_active_chainstate.m_chain.Tip(), tx, STANDARD_LOCKTIME_VERIFY_FLAGS))
         return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "non-final");
 
