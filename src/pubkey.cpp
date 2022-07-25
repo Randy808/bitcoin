@@ -224,6 +224,7 @@ uint256 XOnlyPubKey::ComputeTapTweakHash(const uint256* merkle_root) const
     }
 }
 
+<<<<<<< HEAD
 bool XOnlyPubKey::CheckTapTweak(const XOnlyPubKey& internal, const uint256& merkle_root, bool parity) const
 {
     secp256k1_xonly_pubkey internal_key;
@@ -233,8 +234,14 @@ bool XOnlyPubKey::CheckTapTweak(const XOnlyPubKey& internal, const uint256& merk
 }
 
 std::optional<std::pair<XOnlyPubKey, bool>> XOnlyPubKey::CreateTapTweak(const uint256* merkle_root) const
+=======
+//RANDY_COMMENTED
+bool XOnlyPubKey::CheckPayToContract(const XOnlyPubKey& base, const uint256& hash, bool parity) const
+>>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
 {
+    //Initialize abase point
     secp256k1_xonly_pubkey base_point;
+<<<<<<< HEAD
     if (!secp256k1_xonly_pubkey_parse(secp256k1_context_verify, &base_point, data())) return std::nullopt;
     secp256k1_pubkey out;
     uint256 tweak = ComputeTapTweakHash(merkle_root);
@@ -247,6 +254,14 @@ std::optional<std::pair<XOnlyPubKey, bool>> XOnlyPubKey::CreateTapTweak(const ui
     assert(parity == 0 || parity == 1);
     ret.second = parity;
     return ret;
+=======
+
+    //If the public key parse of the base_point using the base's data doesn't work, retur false
+    if (!secp256k1_xonly_pubkey_parse(secp256k1_context_verify, &base_point, base.data())) return false;
+
+    //If the public key loaded into base_point from  base can't be used to verify keydata? Idk
+    return secp256k1_xonly_pubkey_tweak_add_check(secp256k1_context_verify, m_keydata.begin(), parity, &base_point, hash.begin());
+>>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
 }
 
 

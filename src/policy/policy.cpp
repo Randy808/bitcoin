@@ -90,25 +90,40 @@ bool IsStandard(const CScript& scriptPubKey, TxoutType& whichType)
     return true;
 }
 
+//RANDY_COMMENTED
 bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeRate& dust_relay_fee, std::string& reason)
 {
+    //If the transaction version is greater than whats defined in client or its just invalid in general
     if (tx.nVersion > TX_MAX_STANDARD_VERSION || tx.nVersion < 1) {
+        //Set the reason to version
         reason = "version";
+        //Return false
         return false;
     }
 
+    //BITCOIN_START
     // Extremely large transactions with lots of inputs can cost the network
     // almost as much to process as they cost the sender in fees, because
     // computing signature hashes is O(ninputs*txsize). Limiting transactions
     // to MAX_STANDARD_TX_WEIGHT mitigates CPU exhaustion attacks.
+    //BITCOIN_END
+
+    //Get the transaction weight of the param tx
     unsigned int sz = GetTransactionWeight(tx);
+
+    //If size is greater than the max
     if (sz > MAX_STANDARD_TX_WEIGHT) {
+        //Say it's too big
         reason = "tx-size";
+        //retyrn false
         return false;
     }
 
+    //For every transaction input
     for (const CTxIn& txin : tx.vin)
     {
+
+        //BITCOIN_START
         // Biggest 'standard' txin involving only keys is a 15-of-15 P2SH
         // multisig with compressed keys (remember the 520 byte limit on
         // redeemScript size). That works out to a (15*(33+1))+3=513 byte
@@ -117,16 +132,24 @@ bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeR
         // some minor future-proofing. That's also enough to spend a
         // 20-of-20 CHECKMULTISIG scriptPubKey, though such a scriptPubKey
         // is not considered standard.
+        //BITCOIN_END
+
+        //Check the scriptsig on the transaction input
         if (txin.scriptSig.size() > MAX_STANDARD_SCRIPTSIG_SIZE) {
+            //Give a reason related to sign and return false
             reason = "scriptsig-size";
             return false;
         }
+
+        //If the input isn't push only (all op codes have a value of less than 0x60 and are only for pushing data)
         if (!txin.scriptSig.IsPushOnly()) {
+            //Return false
             reason = "scriptsig-not-pushonly";
             return false;
         }
     }
 
+    //
     unsigned int nDataOut = 0;
     TxoutType whichType;
     for (const CTxOut& txout : tx.vout) {
