@@ -224,7 +224,7 @@ uint256 XOnlyPubKey::ComputeTapTweakHash(const uint256* merkle_root) const
     }
 }
 
-<<<<<<< HEAD
+//RANDY_COMMENTED
 bool XOnlyPubKey::CheckTapTweak(const XOnlyPubKey& internal, const uint256& merkle_root, bool parity) const
 {
     secp256k1_xonly_pubkey internal_key;
@@ -234,10 +234,6 @@ bool XOnlyPubKey::CheckTapTweak(const XOnlyPubKey& internal, const uint256& merk
 }
 
 std::optional<std::pair<XOnlyPubKey, bool>> XOnlyPubKey::CreateTapTweak(const uint256* merkle_root) const
-=======
-//RANDY_COMMENTED
-bool XOnlyPubKey::CheckPayToContract(const XOnlyPubKey& base, const uint256& hash, bool parity) const
->>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
 {
     //Initialize abase point
     secp256k1_xonly_pubkey base_point;

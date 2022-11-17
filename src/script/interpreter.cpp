@@ -2074,15 +2074,12 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 //set an error
                 return set_error(serror, SCRIPT_ERR_TAPROOT_WRONG_CONTROL_SIZE);
             }
-<<<<<<< HEAD
-            execdata.m_tapleaf_hash = ComputeTapleafHash(control[0] & TAPROOT_LEAF_MASK, exec_script);
-            if (!VerifyTaprootCommitment(control, program, execdata.m_tapleaf_hash)) {
-=======
 
-            //If the taproot verification committment fails with the control read in, the program, the exec_script read from the stack, and the empty tapleaf hash that will be populated
-            if (!VerifyTaprootCommitment(control, program, exec_script, execdata.m_tapleaf_hash)) {
-                //return an error
->>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
+            execdata.m_tapleaf_hash = ComputeTapleafHash(control[0] & TAPROOT_LEAF_MASK, exec_script);
+                        //If the taproot verification committment fails with the control read in, the program, the exec_script read from the stack, and the empty tapleaf hash that will be populated
+
+            if (!VerifyTaprootCommitment(control, program, execdata.m_tapleaf_hash)) {
+             //return an error
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
             }
 

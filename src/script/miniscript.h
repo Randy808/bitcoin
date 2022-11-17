@@ -118,11 +118,21 @@ namespace miniscript {
  * For each of these properties the subset rule holds: an expression with properties X, Y, and Z, is also
  * valid in places where an X, a Y, a Z, an XY, ... is expected.
 */
+
+//Create a class type that essentially serves as a container for a 4 byte structure with operations defined on it
 class Type {
+    //B
     //! Internal bitmap of properties (see ""_mst operator for details).
+    //B_END
+
+    //Make a 32 bit (4byte) integer to hold bit flags
     uint32_t m_flags;
 
+    //B
     //! Internal constructor used by the ""_mst operator.
+    //B_END
+
+    //Create a constructor that takes in flags and sets m_flags?
     explicit constexpr Type(uint32_t flags) : m_flags(flags) {}
 
 public:
@@ -180,16 +190,27 @@ inline constexpr Type operator"" _mst(const char* c, size_t l) {
     return typ;
 }
 
+//Op code is a pair between opcodetype and a vector of chars
 using Opcode = std::pair<opcodetype, std::vector<unsigned char>>;
 
+//Create a struct Node
 template<typename Key> struct Node;
+//Create a ptr to Node (using the Key?) NodeRef
 template<typename Key> using NodeRef = std::shared_ptr<const Node<Key>>;
 
+//B
 //! Construct a miniscript node as a shared_ptr.
+//B_END
+
+//Constructor for makng node ref
 template<typename Key, typename... Args>
 NodeRef<Key> MakeNodeRef(Args&&... args) { return std::make_shared<const Node<Key>>(std::forward<Args>(args)...); }
 
+//B
 //! The different node types in miniscript.
+//B_END
+
+//Enum to represent enum fragments that seem to abstract away op_codes
 enum class Fragment {
     JUST_0,    //!< OP_0
     JUST_1,    //!< OP_1
@@ -226,7 +247,11 @@ enum class Fragment {
 
 namespace internal {
 
+//B
 //! Helper function for Node::CalcType.
+//B_END
+
+//Create new type that takes in a fragment, 3 other types, subtypes, k, size, subs?, and keys?
 Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys);
 
 //! Helper function for Node::CalcScriptLen.
@@ -235,20 +260,33 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
 //! A helper sanitizer/checker for the output of CalcType.
 Type SanitizeType(Type x);
 
+//B
 //! Class whose objects represent the maximum of a list of integers.
+//B_END
+
+//Crteate a template
 template<typename I>
+//Create a struct for MaxINt
 struct MaxInt {
+    //There's a bool to say whether it's valid
     const bool valid;
+    //It contains a value templated by 'I'
     const I value;
 
+    //Max int just sets valid to false and value to 0
     MaxInt() : valid(false), value(0) {}
+
+    //With a non-empty constructor, set the valye
     MaxInt(I val) : valid(true), value(val) {}
 
+    //Defining operations on this struct that says when you add
+    //2 Max Ints you get the sum of the value's if true, and the {} if either value is invalid
     friend MaxInt<I> operator+(const MaxInt<I>& a, const MaxInt<I>& b) {
         if (!a.valid || !b.valid) return {};
         return a.value + b.value;
     }
 
+    //Returns the max of the MaxInt values or whichever is valid if one is invalid
     friend MaxInt<I> operator|(const MaxInt<I>& a, const MaxInt<I>& b) {
         if (!a.valid) return b;
         if (!b.valid) return a;
@@ -256,64 +294,160 @@ struct MaxInt {
     }
 };
 
+//Make a struct for Ops
 struct Ops {
+    //B
     //! Non-push opcodes.
+    //B_END
+    //This contains a byte
     uint32_t count;
+
+    //B
     //! Number of keys in possibly executed OP_CHECKMULTISIG(VERIFY)s to satisfy.
+    //B_END
+
+    //This is a MaxInt wrapped byte (so the concept of validity is in play here)
     MaxInt<uint32_t> sat;
+
+    //B
     //! Number of keys in possibly executed OP_CHECKMULTISIG(VERIFY)s to dissatisfy.
+    //B_END
+
+    //This is another MaxInt wrapped byte
     MaxInt<uint32_t> dsat;
 
+    //This is a constructor that can set the count, sat, and value
     Ops(uint32_t in_count, MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : count(in_count), sat(in_sat), dsat(in_dsat) {};
 };
 
+
+//Create a strcut called StackSize
 struct StackSize {
+    //B
     //! Maximum stack size to satisfy;
+    //B_END
+
+    //Create another MaxInt for 'sat' (stands for satisfy?)
     MaxInt<uint32_t> sat;
+
+    //B__S
     //! Maximum stack size to dissatisfy;
+    //B_END\
+
+    //MAXInt to dissatisfy
     MaxInt<uint32_t> dsat;
 
+    //Also create a constructor to initialize sat and dsat
     StackSize(MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : sat(in_sat), dsat(in_dsat) {};
 };
 
 } // namespace internal
 
+//
 //! A node in a miniscript expression.
+//B_END
+
+//Template 'Key'
 template<typename Key>
+//Struct a node
 struct Node {
+    //B
     //! What node type this node is.
+    //B_END
+
+    //Every node will have a fragment represneting op_code
     const Fragment fragment;
+
+    //B
     //! The k parameter (time for OLDER/AFTER, threshold for THRESH(_M))
+    //B_END
+
+    //A byte of data for 'k'
     const uint32_t k = 0;
+
+    //B
+    //
     //! The keys used by this expression (only for PK_K/PK_H/MULTI)
+    //
+    //B_END
+
+    //Vector of Keys which is parametrized by template
     const std::vector<Key> keys;
+
+    //B
     //! The data bytes in this expression (only for HASH160/HASH256/SHA256/RIPEMD10).
+    //B_END
+
+    //Create a vector of unsigned characters called data (that the opcode will operate on?)
     const std::vector<unsigned char> data;
+
+    //B
     //! Subexpressions (for WRAP_*/AND_*/OR_*/ANDOR/THRESH)
+    //B_END
+
+    //For combinators that take subexpressions
     const std::vector<NodeRef<Key>> subs;
 
 private:
+    //B
     //! Cached ops counts.
+    //B_END
+
+    //Declares an 'ops' which contains a 'couunt' member
     const internal::Ops ops;
+
+    //B
     //! Cached stack size bounds.
+    //B_END
+
+    //Has a stack size
     const internal::StackSize ss;
+
+    //B
     //! Cached expression type (computed by CalcType and fed through SanitizeType).
+    //B_END
+
+    //Contains a Type which just holds data and has some operations defined on thed ata
     const Type typ;
+
+    //B
     //! Cached script length (computed by CalcScriptLen).
+    //B_END
+
+    //Has a size of the script len
     const size_t scriptlen;
+
+    //B
     //! Whether a public key appears more than once in this node.
+    //B_END
+
+    //has a property indicationg whether it has dup key?
     const bool duplicate_key;
 
+    //B
     //! Compute the length of the script for this miniscript (including children).
+    //B_END
+
+    //Computes the length of the script
     size_t CalcScriptLen() const {
+        //Set size to 0
         size_t subsize = 0;
+
+        //For every subexpression in subs (where the subexpression is a node reference)
         for (const auto& sub : subs) {
+            //Call the script size method of the node and add it to subsize
             subsize += sub->ScriptSize();
         }
+
+        //Get the type of the first subexpression
         Type sub0type = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
+
+        //Compute the script length given the fragment of this node, the subtype,
+        //the subtype script size, k, and the actual sizes of the subexpression and keys collections
         return internal::ComputeScriptLen(fragment, sub0type, subsize, k, subs.size(), keys.size());
     }
 
+    //B
     /* Apply a recursive algorithm to a Miniscript tree, without actual recursive calls.
      *
      * The algorithm is defined by two functions: downfn and upfn. Conceptually, the
@@ -337,26 +471,57 @@ private:
      *
      * Result type cannot be bool due to the std::vector<bool> specialization.
      */
+    //B_END
+
+    //Templare class with 'Result', 'State', etc..
     template<typename Result, typename State, typename DownFn, typename UpFn>
+
+    //Return an optional Result (Rust-inspired monad?)
+    //Takes in a State, a down function, and up funciton
     std::optional<Result> TreeEvalMaybe(State root_state, DownFn downfn, UpFn upfn) const
     {
+        //B
         /** Entries of the explicit stack tracked in this algorithm. */
+        //B_END
+
+        //Define a struct for a stack element
         struct StackElem
         {
-            const Node& node; //!< The node being evaluated.
-            size_t expanded; //!< How many children of this node have been expanded.
-            State state; //!< The state for that node.
+            //It has a node
+            const Node& node; //B //!< The node being evaluated. //B_END
 
+            //It has a number representing how many children have been expanded (children here being subexpression?)
+            size_t expanded; //B //!< How many children of this node have been expanded. //B_END
+
+            //It has a 'state' for the node
+            State state; //B //!< The state for that node. //B_END
+
+            //It has a constructor definig all this too
             StackElem(const Node& node_, size_t exp_, State&& state_) :
                 node(node_), expanded(exp_), state(std::move(state_)) {}
         };
+
+        //B
         /* Stack of tree nodes being explored. */
+        //B_END
+
+        //Stack of nodes
         std::vector<StackElem> stack;
+
+        //B
         /* Results of subtrees so far. Their order and mapping to tree nodes
          * is implicitly defined by stack. */
+        //B_END
+
+        //Gets a vector of results
         std::vector<Result> results;
+
+        //std::move - "It is exactly equivalent to a static_cast to an rvalue reference type."
+
+        //Add a StackElem to the back of the stack using 'this' Node element , 0, and the root_state (root state bing a param)
         stack.emplace_back(*this, 0, std::move(root_state));
 
+        //B
         /* Here is a demonstration of the algorithm, for an example tree A(B,C(D,E),F).
          * State variables are omitted for simplicity.
          *
@@ -373,30 +538,75 @@ private:
          *        stack=[(A,3)] results=[B,C,F]
          * Final: stack=[] results=[A]
          */
+        //B_END
+
+        //While the stack isn't empty
         while (stack.size()) {
+            //Retrieve the node element from the end (or 'top') of the stack
             const Node& node = stack.back().node;
+
+            //If the stack's last elem isn't expanded to it's subexpressions
             if (stack.back().expanded < node.subs.size()) {
+
+                //B
                 /* We encounter a tree node with at least one unexpanded child.
                  * Expand it. By the time we hit this node again, the result of
                  * that child (and all earlier children) will be at the end of `results`. */
+                //B_END
+
+                //Get the childIndex of the next thing to be expanded
                 size_t child_index = stack.back().expanded++;
+
+                //Call the downfn on the top of stack (TOS/tos), the tos's node, and the tos''s next unexpanded subecpression
                 State child_state = downfn(stack.back().state, node, child_index);
+
+                //Add the subexpression StackElem to the top of the stack with it's state calculated from downfn
                 stack.emplace_back(*node.subs[child_index], 0, std::move(child_state));
+
+                //continue so we can go back and re-evaluate the new stack elements
                 continue;
             }
+
+            //B
             // Invoke upfn with the last node.subs.size() elements of results as input.
+            //B_END
+
+            //assert results ( vector of 'Result') size is greater than the current stackelem node's subsequence size
             assert(results.size() >= node.subs.size());
+
+            //Create a result made of  upfn(), the node, the results and the subexprs?
             std::optional<Result> result{upfn(std::move(stack.back().state), node,
                 Span<Result>{results}.last(node.subs.size()))};
+
+            //B
             // If evaluation returns std::nullopt, abort immediately.
+            //B_END
+
+            //If the result is null abort
             if (!result) return {};
+
+            //B
             // Replace the last node.subs.size() elements of results with the new result.
+            //B_END
+
+            //Erases the results from the node by taking subexpression size off stack
             results.erase(results.end() - node.subs.size(), results.end());
+
+            //Push back the result into results
             results.push_back(std::move(*result));
+
+            //pop this stack elem
             stack.pop_back();
         }
+
+        //B
         // The final remaining results element is the root result, return it.
+        //B_END
+
+        //Make sure there's 1 result
         assert(results.size() == 1);
+
+        //Return the only result in results
         return std::move(results[0]);
     }
 
@@ -483,27 +693,60 @@ private:
 
 public:
     template<typename Ctx>
+    //RANDY_COMMENTED
     CScript ToScript(const Ctx& ctx) const
     {
+        //B
         // To construct the CScript for a Miniscript object, we use the TreeEval algorithm.
         // The State is a boolean: whether or not the node's script expansion is followed
         // by an OP_VERIFY (which may need to be combined with the last script opcode).
+        //B_END
+
+        //Create a down fn that returns a bool
+        //https://docs.microsoft.com/en-us/cpp/cpp/lambda-expressions-in-cpp?view=msvc-170
         auto downfn = [](bool verify, const Node& node, size_t index) {
+            //B
             // For WRAP_V, the subexpression is certainly followed by OP_VERIFY.
+            //B_END
+
+            //If the node fragment is a wrapping v, return true
             if (node.fragment == Fragment::WRAP_V) return true;
+
+            //B
             // The subexpression of WRAP_S, and the last subexpression of AND_V
             // inherit the followed-by-OP_VERIFY property from the parent.
+            //B_END
+
+            //If the node fragment is weap_s or and_v and the index passed is '1' return the verify thei lambda was called with
             if (node.fragment == Fragment::WRAP_S ||
                 (node.fragment == Fragment::AND_V && index == 1)) return verify;
+
+            //Othersie return false
             return false;
         };
+
+        //B_S
         // The upward function computes for a node, given its followed-by-OP_VERIFY status
         // and the CScripts of its child nodes, the CScript of the node.
+        //B_END
+
+        //Define upfn lambda
         auto upfn = [&ctx](bool verify, const Node& node, Span<CScript> subs) -> CScript {
+
+            //Swicth on the node fragment
             switch (node.fragment) {
+
+                //If the node fragment is pk_k then build a script with the pkbytes passed into buildscript
                 case Fragment::PK_K: return BuildScript(ctx.ToPKBytes(node.keys[0]));
+
+                //IF the fragment is ph_h then build a script for pubkeyhas
                 case Fragment::PK_H: return BuildScript(OP_DUP, OP_HASH160, ctx.ToPKHBytes(node.keys[0]), OP_EQUALVERIFY);
+
+                //If the fragment is 'older' then return the node's 'k' appended by OP_CHECKSEQUENCEVERIFY
                 case Fragment::OLDER: return BuildScript(node.k, OP_CHECKSEQUENCEVERIFY);
+
+                //TOSCRIPT
+                //CHECKPOINT
                 case Fragment::AFTER: return BuildScript(node.k, OP_CHECKLOCKTIMEVERIFY);
                 case Fragment::SHA256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
                 case Fragment::RIPEMD160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
@@ -983,33 +1226,69 @@ void BuildBack(const Ctx& ctx, Fragment nt, std::vector<NodeRef<Key>>& construct
  * the `IsValidTopLevel()` and `IsSaneTopLevel()` to check for these properties on the node.
  */
 template<typename Key, typename Ctx>
+
+//LEXER?
+//RANDY CHECKPOINT
 inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
 {
+    //use namespace
     using namespace spanparsing;
 
+    //B
     // The two integers are used to hold state for thresh()
+    //B_END
+
+    //vector of parse context and 2 int64s
     std::vector<std::tuple<ParseContext, int64_t, int64_t>> to_parse;
+
+    //Create a vectoer of noderefs
     std::vector<NodeRef<Key>> constructed;
 
+    //Emplace back a tuple for wrapped expr, and two -1s
     to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
 
+    //While there's something in the 'to_parse' tuple
     while (!to_parse.empty()) {
+        //B
         // Get the current context we are decoding within
+        //B_END
+
+        //pop off the context and 2 ints from tuple
         auto [cur_context, n, k] = to_parse.back();
+
+        //Remvoe the tuple
         to_parse.pop_back();
 
+        //switch curr context (initialized to WRAPPED_EXPR)
         switch (cur_context) {
+        //WRAPPED EXPR is firstly hit
         case ParseContext::WRAPPED_EXPR: {
+            //Set index to -1
             int colon_index = -1;
+
+            //For all ints to 'in' size, where 'in.size()' represents the char vec argument len
             for (int i = 1; i < (int)in.size(); ++i) {
+                //If the character we're at is a colon then mark we found a colon by setting 'colon_index' and break
                 if (in[i] == ':') {
+                    //Set the colon index
                     colon_index = i;
+                    //break
                     break;
                 }
+
+                //If the character in the input isn't vaild input ascii then break
                 if (in[i] < 'a' || in[i] > 'z') break;
             }
+
+            // B
             // If there is no colon, this loop won't execute
+            //B_EMD
+
+            //For every index up to the colon we try and parse it
             for (int j = 0; j < colon_index; ++j) {
+                //
+                //parse the character and try to send it to 'to_parse'
+                //
                 if (in[j] == 'a') {
                     to_parse.emplace_back(ParseContext::ALT, -1, -1);
                 } else if (in[j] == 's') {
@@ -1036,9 +1315,14 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                     return {};
                 }
             }
+
+            //Add an expression to to_parsee
             to_parse.emplace_back(ParseContext::EXPR, -1, -1);
+
+            //Get everything after the colon
             in = in.subspan(colon_index + 1);
             break;
+            //CHECKPOINT
         }
         case ParseContext::EXPR: {
             if (Const("0", in)) {
@@ -1726,6 +2010,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
 } // namespace internal
 
 template<typename Ctx>
+//Ctx in arg here is really just 'KeyParser'
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
     return internal::Parse<typename Ctx::Key>(str, ctx);
 }

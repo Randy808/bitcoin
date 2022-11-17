@@ -55,7 +55,7 @@ std::string StringForFeeEstimateHorizon(FeeEstimateHorizon horizon)
     assert(false);
 }
 
-<<<<<<< HEAD
+
 namespace {
 
 struct EncodedDoubleFormatter
@@ -75,12 +75,10 @@ struct EncodedDoubleFormatter
 
 } // namespace
 
-=======
 
 //RANDY_COMMENTED
 //Pretty much a private class
 //B_START
->>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
 /**
  * We will instantiate an instance of this class to track transactions that were
  * included in a block. We will lump transactions into a bucket according to their
@@ -199,7 +197,19 @@ public:
 };
 
 //RANDY_COMMENTED
-//This is the constructor for 'TxConfirmStats'. Initialize confAvg and failAvg vectors into sizes matching the 3rd parameter 'maxPeriods', and initialize each vector's contained double vectors to have the same size as the first param 'defaultBuckets'. Then initialize txCtAvg and m_feerate_avg to bucket size as well.
+//This is the constructor for 'TxConfirmStats'. Initialize confAvg and failAvg vectors into sizes matching the 3rd parameter 'maxPeriods', and initialize each vector's contained double vectors to have the same size as the first param 'defaultBuckets'. Then initialize txCtAvg and m_feerate_avg to the 'defaultBuckets' size as well.
+/*
+maxPeriods: 3
+defaultBuckets: 2
+confAvg: | {1,2} | {1,2} | {1,2} |
+failAvg: | {1,2} | {1,2} | {1,2} |
+txCtAvg: {1,2}
+m_feerate_avg: {1,2}
+
+| period{ feerateBucket1{},feerateBucket2{} } |
+*Each period contains recorded fees for all confirmationTimes that are within scale*periodIndex
+
+*/
 TxConfirmStats::TxConfirmStats(const std::vector<double>& defaultBuckets,
                                const std::map<double, unsigned int>& defaultBucketMap,
                                unsigned int maxPeriods, double _decay, unsigned int _scale)
@@ -277,6 +287,27 @@ void TxConfirmStats::ClearCurrent(unsigned int nBlockHeight)
 //RANDY_COMMENTED
 //**Called from CBlockPolicyEstimator::processBlockTx
 //Increment the bucket value count (with bucket index matching the feerate) for all periods represented by 'blocksToConfirm'. Also adds feerate to corresponding bucket index value in m_feerate_avg and increments txCtAvg at the same index.
+/*
+maxPeriods: 3
+defaultBuckets: 2
+confAvg: | {0,0} | {0,0} | {0,0} |
+failAvg: | {1,2} | {1,2} | {1,2} |
+txCtAvg: {1,2}
+m_feerate_avg: {1,2}
+
+(blocksToConfirm = 2, feerate = 3)
+bucketIndex will round down feerate to *index* below bucket length, so the max index is 1 for max index of value 2. Uses bucketmap to convert feerate to bucket index
+bucketIndex: 1
+periodsToConfirm = blocksToConfirm will fall into a scale that will fall into a specific period
+                 |_periodsToConfirm will cause all index after _periodsToConfirm to incremnet
+confAvg: | {0,0} | {0,0} | {0,0} |
+confAvg: | {0,0} | {0,0} | {0,0} |
+
+
+| period{ feerateBucket1{},feerateBucket2{} } |
+*Each period contains recorded fees for all confirmationTimes that are within scale*periodIndex
+
+*/
 void TxConfirmStats::Record(int blocksToConfirm, double feerate)
 {
     //BITCOIN_START
@@ -289,9 +320,12 @@ void TxConfirmStats::Record(int blocksToConfirm, double feerate)
 
     //Calculate periodsToConfirm by scaling the 'blocksToConfirm' parameter down by 'scale'. The blocksToConfirm has 'scale' added to it so the periodsToConfirm integer will start at '1' (since 'blocksToConfim' must be at least 1, and if the blocksToConfirm is set to 1 then the whole expression will resolve to 1).
     //blocksToConfirm has to be a multiple of (scale - 1) to get more periods to confirm
+    // (blocksToConfirm-1)/scale + 1
+    //Focused on granularity and doesn't have set period sizes
     int periodsToConfirm = (blocksToConfirm + scale - 1) / scale;
 
     //Make the bucketindex to increment equal to bucketMap's lower bound for the feerate given in the parameter
+    //Bucket map is map from feerate threshold to bucket index
     //This gets the bucket index in 'buckets' that best matches the 'feerate'
     unsigned int bucketindex = bucketMap.lower_bound(feerate)->second;
 
@@ -310,6 +344,7 @@ void TxConfirmStats::Record(int blocksToConfirm, double feerate)
 
 
 //RANDY_COMMENTED
+//Called from processBlock
 //Multiply every value in confAvg and failAvg (in every 2d index) by the decay
 void TxConfirmStats::UpdateMovingAverages()
 {
@@ -369,8 +404,10 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
 
     //The period target is the confTarget in the param, plus the scale minus 1, all over the scale.
     //I'm not sure what the '-1' does or what this is actually calculating
-    //REVISIT
+    // (confTarget - 1/scale )+ 1
+    // Getting an interval from 0 to scale (how many above scale is it? At confTarget 0 it's 1/1 with slight shift of -1 to include 0 to scale all in first bucket)
 
+    //Measuring how much over the scale we are
     const int periodTarget = (confTarget + scale - 1) / scale;
 
     //Gets the the max bucket index (last index of anything is always size - 1)
@@ -423,8 +460,13 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
     //BITCOIN_END
 
     //for every bucket starting with the max index going to 0, where the maxbucketindex is equal to the last index in the 'buckets' variable passed in as the parameter
+
+    //For every fee rate bucket in a period, calculate the total confirmed. For every feerate bucket (regardless of period) count the total. Count the number of failed for period and bucket.
     for (int bucket = maxbucketindex; bucket >= 0; --bucket) {
+
         //If the newBucketRange is true (our first iteration of loop?)
+        //newBucketRange is only set to true if the currPct (current percentage) if curr range of buckets has sufficient number of txs AND is passing success breakpoint
+        //Bucket range is recording the 'bucket range' of failing transactions until a succes thresh
         if (newBucketRange) {
             //Then set the curNearBucket to the bucket
             curNearBucket = bucket;
@@ -474,8 +516,9 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
 
 
         //If totalNum is greater than or equal to the sufficientTxVal parameter scaled by (1-decay)
+        //more decay means a bigger tx threshold
         if (totalNum >= sufficientTxVal / (1 - decay)) {
-            //Set the current pct to nConf scaled by total
+            //Set the current percentage to nConf scaled by total
             double curPct = nConf / (totalNum + failNum + extraNum);
 
             //BITCOIN_START
@@ -499,6 +542,11 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
 
                     //Get the index for a fail value for the max bucket
                     unsigned int failMaxBucket = std::max(curNearBucket, curFarBucket);
+
+
+                    //Fail buckets only change the first time the totalNum count exceeds the threshold after a success. Failure isn't redefined again unless another success is hit.
+
+                    //So we can infer fail end to start is the first time we got enough txs but it probably failed until 0 otherwise we would've got a new success
 
                     //If the failMinBucket is greater than 0 then define the start of the failBucket as the value at the failMinBucket index in buckets; otherwise set to 0
                     failBucket.start = failMinBucket ? buckets[failMinBucket - 1] : 0;
@@ -563,6 +611,9 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
                 passBucket.leftMempool = failNum;
                 failNum = 0;
                 extraNum = 0;
+
+                //Best bucket is recorded here because we are successively going to less and less fee rate buckets
+                //We're recording the greatest range of buckets for which we were successful at this confirmation level
                 bestNearBucket = curNearBucket;
                 bestFarBucket = curFarBucket;
                 newBucketRange = true;
@@ -609,8 +660,9 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
         //For every bucket from min to max again
         for (unsigned int j = minBucket; j <= maxBucket; j++) {
             //If the txCtAvg at the bucket is less than the halfed txSum
+            //if the number of transactions in feerate j is less than half the number of transactions
             if (txCtAvg[j] < txSum)
-                //Subtract the value from txSum
+                //Subtract the value from txSum because we want to get the feerate j that contains the median number of txs
                 txSum -= txCtAvg[j];
 
             //B_S
@@ -619,6 +671,8 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
 
             //Otherwise
             else {
+                //m_feerate_avg[j] is the sum of all feerates in feerate bucket j multiplied by the decay whenever the moving avg was updated
+                //txCtAvg is the total recorded txs for feerate bucket j
                 //Set the median to m_feerate_avg at that bucket, over txCtAvg at the bucket
                 median = m_feerate_avg[j] / txCtAvg[j];
                 //And break
@@ -626,15 +680,19 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
             }
         }
 
-        //CHECKPOINT
+        //Make the pass bucket's start equal to one before the min bucket, 0 otherwise
         passBucket.start = minBucket ? buckets[minBucket - 1] : 0;
+        //Make the pass bucket end equal to the max bucket
         passBucket.end = buckets[maxBucket];
     }
 
     //BITCOIN_START
     // If we were passing until we reached last few buckets with insufficient data, then report those as failed
     //BITCOIN_END
+
+    //If the loop finished off passing and enough tx didn't pass sufficientTxVal to determine whether the curr bucket range would be passing
     if (passing && !newBucketRange) {
+        //Use the buckets at the end of the loop (fewest confs) as failing
         unsigned int failMinBucket = std::min(curNearBucket, curFarBucket);
         unsigned int failMaxBucket = std::max(curNearBucket, curFarBucket);
         failBucket.start = failMinBucket ? buckets[failMinBucket - 1] : 0;
@@ -654,6 +712,7 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
         failed_within_target_perc = 100 * failBucket.withinTarget / (failBucket.totalConfirmed + failBucket.inMempool + failBucket.leftMempool);
     }
 
+    //log
     LogPrint(BCLog::ESTIMATEFEE, "FeeEst: %d > %.0f%% decay %.5f: feerate: %g from (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out) Fail: (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out)\n",
              confTarget, 100.0 * successBreakPoint, decay,
              median, passBucket.start, passBucket.end,
@@ -665,11 +724,17 @@ double TxConfirmStats::EstimateMedianVal(int confTarget, double sufficientTxVal,
 
 
     if (result) {
+        //Define the pass bucket as the succeeding bucket range
         result->pass = passBucket;
+        //Define the fail bucket as all not up to confirmation threshold
         result->fail = failBucket;
+        //decay is set on instantiation of this txconfirmstats
         result->decay = decay;
+        //scale is set on instantiation as well
         result->scale = scale;
     }
+
+    //return the median val
     return median;
 }
 
@@ -740,6 +805,7 @@ void TxConfirmStats::Read(AutoFile& filein, int nFileVersion, size_t numBuckets)
 }
 
 //RANDY_COMMENTED
+//Called from TxConfirmStats::ProcessTransaction
 //Increments a value in unconfTxs corresponding to the blockindex (calculated from the blockHeight) and the bucketindex (calculated from the 'val' which is presumably the fee rate) and returns the bucketindex
 unsigned int TxConfirmStats::NewTx(unsigned int nBlockHeight, double val)
 {
@@ -849,16 +915,13 @@ bool CBlockPolicyEstimator::removeTx(uint256 hash, bool inBlock)
 {
     //Lock the fee estimator
     LOCK(m_cs_fee_estimator);
-<<<<<<< HEAD
     return _removeTx(hash, inBlock);
 }
 
 bool CBlockPolicyEstimator::_removeTx(const uint256& hash, bool inBlock)
 {
     AssertLockHeld(m_cs_fee_estimator);
-=======
     //Get the place in the hash-to-TxStatsInfo where the hash in the parameter is located
->>>>>>> 38a46344c (Made some comments to help me understand.)
     std::map<uint256, TxStatsInfo>::iterator pos = mapMemPoolTxs.find(hash);
 
     //If the iterator is not at the end of the map
@@ -878,17 +941,12 @@ bool CBlockPolicyEstimator::_removeTx(const uint256& hash, bool inBlock)
     }
 }
 
-<<<<<<< HEAD
-CBlockPolicyEstimator::CBlockPolicyEstimator(const fs::path& estimation_filepath)
-    : m_estimation_filepath{estimation_filepath}, nBestSeenHeight{0}, firstRecordedHeight{0}, historicalFirst{0}, historicalBest{0}, trackedTxs{0}, untrackedTxs{0}
-=======
 //RANDY_COMMENTED (SUGGESTION: Make explicitly public)
 //Constructor
 //Initializes 'buckets' with the thresholds for each bucket, and initialized 'bucketMap' with (threshold,bucketIndexe) key values. fee_stats, long_stats, and short_stats are then initialized as pointers to TxConfirmStats which are initialized using the same bucket values but different constant values. The fee estimae file name is then attempted to be read and a log is made if the file can't be read (although I imagine it will be created later on which prevents any exception from being thrown, etc)
 //ALL PROPERTIES ARE SET TO 0 BESIDES IMPORTANT ONES ABOVE
-CBlockPolicyEstimator::CBlockPolicyEstimator()
-    : nBestSeenHeight(0), firstRecordedHeight(0), historicalFirst(0), historicalBest(0), trackedTxs(0), untrackedTxs(0)
->>>>>>> 38a46344c (Made some comments to help me understand.)
+CBlockPolicyEstimator::CBlockPolicyEstimator(const fs::path& estimation_filepath)
+    : m_estimation_filepath{estimation_filepath}, nBestSeenHeight{0}, firstRecordedHeight{0}, historicalFirst{0}, historicalBest{0}, trackedTxs{0}, untrackedTxs{0}
 {
     //Assert that the MIN_BUCKET_FEERATE constant wasn't set to a non-positive number
     static_assert(MIN_BUCKET_FEERATE > 0, "Min feerate must be nonzero");
@@ -922,36 +980,20 @@ CBlockPolicyEstimator::CBlockPolicyEstimator()
 
     //BITCOIN_START
     // If the fee estimation file is present, read recorded estimations
-<<<<<<< HEAD
-    AutoFile est_file{fsbridge::fopen(m_estimation_filepath, "rb")};
-    if (est_file.IsNull() || !Read(est_file)) {
-        LogPrintf("Failed to read fee estimates from %s. Continue anyway.\n", fs::PathToString(m_estimation_filepath));
-=======
     //BITCOIN_END
-    //Get the path to where the fee estimates file should be (the '/' is an operator of fs::path that appends FEE_ESTIMATES_FILENAME to the path of the data dir)
-    fs::path est_filepath = GetDataDir() / FEE_ESTIMATES_FILENAME;
-
     //Open the file as a binary file and place the file struct in the wrapper CAutoFile
-    CAutoFile est_file(fsbridge::fopen(est_filepath, "rb"), SER_DISK, CLIENT_VERSION);
 
+    AutoFile est_file{fsbridge::fopen(m_estimation_filepath, "rb")};
     //If the file made is null or can't be read
     if (est_file.IsNull() || !Read(est_file)) {
         //log the failure
-        LogPrintf("Failed to read fee estimates from %s. Continue anyway.\n", est_filepath.string());
->>>>>>> 38a46344c (Made some comments to help me understand.)
+        LogPrintf("Failed to read fee estimates from %s. Continue anyway.\n", fs::PathToString(m_estimation_filepath));
     }
 }
 
-<<<<<<< HEAD
-CBlockPolicyEstimator::~CBlockPolicyEstimator() = default;
-=======
 //RANDY_COMMENTED
 //Just a declared destructor with no logic
-CBlockPolicyEstimator::~CBlockPolicyEstimator()
-{
-}
->>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
-
+CBlockPolicyEstimator::~CBlockPolicyEstimator() = default
 
 //RANDY_COMMENTED
 //*NOT* called from processBlockTx. Called directly from mempool (txmempool.cpp)
@@ -1046,14 +1088,11 @@ void CBlockPolicyEstimator::processTransaction(const CTxMemPoolEntry& entry, boo
 //FALSE if transaction was never put in mempool txs OR if blcoksToConfirm shows we already processed block
 bool CBlockPolicyEstimator::processBlockTx(unsigned int nBlockHeight, const CTxMemPoolEntry* entry)
 {
-<<<<<<< HEAD
     AssertLockHeld(m_cs_fee_estimator);
-    if (!_removeTx(entry->GetTx().GetHash(), true)) {
-=======
+
     //If we're not able to remove the transacton passed in as mempool entry
-    if (!removeTx(entry->GetTx().GetHash(), true)) {
+    if (!_removeTx(entry->GetTx().GetHash(), true)) {
         //B_START
->>>>>>> d2c604ac4 (Left comment on fees, interpreter, etc.)
         // This transaction wasn't being tracked for fee estimation
         //B_END
 
@@ -1200,6 +1239,7 @@ CFeeRate CBlockPolicyEstimator::estimateFee(int confTarget) const
 
 
 //RANDY_COMMENTED
+//Called from: CBlockPolicyEstimator::estimateFee, RPCHelpMan::estimaterawfee
 //Hardcoded to have successThreshold of ~95% (defiend in DOUBLE_SUCCESS_PCT const) and feeHorizon of 1 (from estmatesmartFee)
 //Gets the median val of the stats object chosen by the horizon, and returns it as the fee
 CFeeRate CBlockPolicyEstimator::estimateRawFee(int confTarget, double successThreshold, FeeEstimateHorizon horizon, EstimationResult* result) const

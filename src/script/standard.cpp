@@ -339,8 +339,10 @@ public:
 };
 } // namespace
 
+//RANDY_COMMENTED
 CScript GetScriptForDestination(const CTxDestination& dest)
 {
+    //Just uses the std::visit to instantiate CScriptVisitor with the destination
     return std::visit(CScriptVisitor(), dest);
 }
 
@@ -487,30 +489,69 @@ TaprootBuilder& TaprootBuilder::Finalize(const XOnlyPubKey& internal_key)
 
 WitnessV1Taproot TaprootBuilder::GetOutput() { return WitnessV1Taproot{m_output_key}; }
 
+
+//RANDY_COMMENTED
+//Gets the merkle root of script and puts it in spend data's merkle root, sets the internal key,
+//and copies merkle branch data to control block for every leaf of m_branch[0].
+//m_branch is of type NodeInfo which has a vector of LeafInfos which have leaves it contains and
+//all leaves of its children if NodeInfo comment is to be believed:
+//"Tracked leaves underneath this node (either from the node itself, or its children).
+//         *  The merkle_branch field of each is the partners to get to *this* node. "
 TaprootSpendData TaprootBuilder::GetSpendData() const
 {
+    //Assert completion
     assert(IsComplete());
+
+    //Assert the putput key for the spend data is valid
     assert(m_output_key.IsFullyValid());
+
+    //Declare an uninitialized taproot spend data
     TaprootSpendData spd;
+
+    //Set the merkle root to an uninitiialized 256 bits if there are no branches of the merkle tree
+    //and set it to root of merkle tree if there's at least 1 branch
     spd.merkle_root = m_branch.size() == 0 ? uint256() : m_branch[0]->hash;
+
+    //Set the internal key to whatever internal key is set on this spend data
     spd.internal_key = m_internal_key;
+
+    //If the branch size is there (there are scripts in the key)
     if (m_branch.size()) {
+        //B_START
         // If any script paths exist, they have been combined into the root m_branch[0]
         // by now. Compute the control block for each of its tracked leaves, and put them in
         // spd.scripts.
+        //B_END
+
+        //For every leaf in the root branch's leaves
         for (const auto& leaf : m_branch[0]->leaves) {
+            //Create a vector for control block
             std::vector<unsigned char> control_block;
+
+            //Resize the control block according to leaf's merkle branch size
             control_block.resize(TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * leaf.merkle_branch.size());
+
+            //Set the first byte of control block according to leaf_version and parity
             control_block[0] = leaf.leaf_version | (m_parity ? 1 : 0);
+
+            //Copy the internal key to the control block
             std::copy(m_internal_key.begin(), m_internal_key.end(), control_block.begin() + 1);
+
+            //If there are leaf merkle branches
             if (leaf.merkle_branch.size()) {
+
+                //Copy all merkle branches of leaf (TAPROOT_CONTROL_NODE_SIZE * leaf.merkle_branch.size()) to the control block
                 std::copy(leaf.merkle_branch[0].begin(),
                           leaf.merkle_branch[0].begin() + TAPROOT_CONTROL_NODE_SIZE * leaf.merkle_branch.size(),
                           control_block.begin() + TAPROOT_CONTROL_BASE_SIZE);
             }
+
+            //Add the scripts to the script data
             spd.scripts[{leaf.script, leaf.leaf_version}].insert(std::move(control_block));
         }
     }
+
+    //Return the taproot spend data
     return spd;
 }
 

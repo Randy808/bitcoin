@@ -652,6 +652,7 @@ static void DiscourageFeeSniping(CMutableTransaction& tx, FastRandomContext& rng
     }
 }
 
+//RANDY_COMMENTED
 static BResult<CreatedTransactionResult> CreateTransactionInternal(
         CWallet& wallet,
         const std::vector<CRecipient>& vecSend,
@@ -659,20 +660,47 @@ static BResult<CreatedTransactionResult> CreateTransactionInternal(
         const CCoinControl& coin_control,
         bool sign) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
+    //Assert a lock is held on cs_wallet
     AssertLockHeld(wallet.cs_wallet);
 
+    //B_START
     // out variables, to be packed into returned result structure
+    //B_END
+
+    //Declare an amount that will represent the fee
     CAmount nFeeRet;
+
+    //Define the change output position
     int nChangePosInOut = change_pos;
 
+    //Create a fast random num generator
     FastRandomContext rng_fast;
-    CMutableTransaction txNew; // The resulting transaction that we make
 
-    CoinSelectionParams coin_selection_params{rng_fast}; // Parameters for coin selection, init with dummy
+    //B_START
+    // The resulting transaction that we make
+    //B_END
+
+    //Declare a new transaction
+    CMutableTransaction txNew;
+
+    //B_START
+    // Parameters for coin selection, init with dummy
+    //B_END
+
+    //Create coin selection params for the coin control alg using the random number generator
+    CoinSelectionParams coin_selection_params{rng_fast};
+
+    //Set the coin selection params of whether partial spends should be avoided to our coin control argument defined from calling method
     coin_selection_params.m_avoid_partial_spends = coin_control.m_avoid_partial_spends;
 
+    //B_START
     // Set the long term feerate estimate to the wallet's consolidate feerate
+    //B_END
+
+    //Set the long term feerates to come form wallet
     coin_selection_params.m_long_term_feerate = wallet.m_consolidate_feerate;
+
+    //CHECKPOINT
 
     CAmount recipients_sum = 0;
     const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend);
@@ -947,6 +975,9 @@ static BResult<CreatedTransactionResult> CreateTransactionInternal(
     return CreatedTransactionResult(tx, nFeeRet, nChangePosInOut, feeCalc);
 }
 
+//wallet.CreateTransaction(recipients, tx, nFeeRequired, nChangePosRet, error, coin_control, fee_calc_out, true);
+
+//RANDY_COMMENTED
 BResult<CreatedTransactionResult> CreateTransaction(
         CWallet& wallet,
         const std::vector<CRecipient>& vecSend,
@@ -954,21 +985,34 @@ BResult<CreatedTransactionResult> CreateTransaction(
         const CCoinControl& coin_control,
         bool sign)
 {
+    //If the recipient list is empty, return the error
     if (vecSend.empty()) {
         return _("Transaction must have at least one recipient");
     }
 
+    //if any of the recipient amounts are less than 0 then return an error
     if (std::any_of(vecSend.cbegin(), vecSend.cend(), [](const auto& recipient){ return recipient.nAmount < 0; })) {
         return _("Transaction amounts must not be negative");
     }
 
+    //lock the cs_wallet
     LOCK(wallet.cs_wallet);
 
+    //Create the transaction using the wallet, recipient-amount list 'vecSend', the chane position, coin control alg, and the sign
     auto res = CreateTransactionInternal(wallet, vecSend, change_pos, coin_control, sign);
+
+    //LOG
     TRACE4(coin_selection, normal_create_tx_internal, wallet.GetName().c_str(), res.HasRes(),
            res ? res.GetObj().fee : 0, res ? res.GetObj().change_pos : 0);
+
+    //If the result transaction is not defined, just return the null
     if (!res) return res;
+
+    //Get the obj from the result monad
     const auto& txr_ungrouped = res.GetObj();
+
+    //CHECKPOINT
+
     // try with avoidpartialspends unless it's enabled already
     if (txr_ungrouped.fee > 0 /* 0 means non-functional fee rate estimation */ && wallet.m_max_aps_fee > -1 && !coin_control.m_avoid_partial_spends) {
         TRACE1(coin_selection, attempting_aps_create_tx, wallet.GetName().c_str());

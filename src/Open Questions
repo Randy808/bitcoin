@@ -16,3 +16,7 @@ AcceptBlock->CheckBlock
 ProcessNewBlock->CheckBlock
 TestBlockValidity->CheckBlock
 VerifyDB->CheckBlock
+
+
+policy/fees.cpp
+Uses TxConfirmStats to track fee rates using 'TxConfirmStats::Record' and retrieves the numbers using estimateMedianVal

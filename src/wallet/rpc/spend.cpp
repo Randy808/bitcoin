@@ -209,6 +209,7 @@ static void SetFeeEstimateMode(const CWallet& wallet, CCoinControl& cc, const Un
     }
 }
 
+//RANDY_COMMENTED
 RPCHelpMan sendtoaddress()
 {
     return RPCHelpMan{"sendtoaddress",
@@ -260,37 +261,69 @@ RPCHelpMan sendtoaddress()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    //Get the wallet for the request
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+
+    //If the wallet couldn't be retrieved, return the null univalue
     if (!pwallet) return NullUniValue;
 
+    //B_START
     // Make sure the results are valid at least up to the most recent block
     // the user could have gotten from another RPC command prior to now
+    //B_END
+
+    //Make sure the wallet is synced to curr block
     pwallet->BlockUntilSyncedToCurrentChain();
 
+    //Lock the pwallet from other threads
     LOCK(pwallet->cs_wallet);
 
+    //B_START
     // Wallet comments
+    //B_ENd
+
+    //Create a map value
     mapValue_t mapValue;
+
+    //If the comment param was provided, put it in the map value
     if (!request.params[2].isNull() && !request.params[2].get_str().empty())
         mapValue["comment"] = request.params[2].get_str();
+
+    //If the 'to' param was provided put it into map value
     if (!request.params[3].isNull() && !request.params[3].get_str().empty())
         mapValue["to"] = request.params[3].get_str();
 
+    //Whether the fee amount should be subtracted is set to false
     bool fSubtractFeeFromAmount = false;
+
+    //If the request param to subtract from the amount was set then set the bool
     if (!request.params[4].isNull()) {
         fSubtractFeeFromAmount = request.params[4].get_bool();
     }
 
+    //Create a coin control
     CCoinControl coin_control;
+
+    //set the RBF prop on coin control if param was defined
     if (!request.params[5].isNull()) {
         coin_control.m_signal_bip125_rbf = request.params[5].get_bool();
     }
 
+    //See whether the wallet would liek to avoid address reuse
     coin_control.m_avoid_address_reuse = GetAvoidReuseFlag(*pwallet, request.params[8]);
+
+    //B_START
     // We also enable partial spend avoidance if reuse avoidance is set.
+    //B_END
+
+    //OR the address reuse with the prop on coin control which says whether to avoid partial spends
     coin_control.m_avoid_partial_spends |= coin_control.m_avoid_address_reuse;
 
+    //Set the fee estimate mode using the params if defined
     SetFeeEstimateMode(*pwallet, coin_control, /*conf_target=*/request.params[6], /*estimate_mode=*/request.params[7], /*fee_rate=*/request.params[9], /*override_min_fee=*/false);
+
+    //CHECKPOINT
+
 
     EnsureWalletIsUnlocked(*pwallet);
 

@@ -1696,207 +1696,439 @@ BResult<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const Outpu
     }
 }
 
+//RANDY_COMMENTED
+//Takes in a script and returns whether the utxo with that given script can be spent via descriptor
 isminetype DescriptorScriptPubKeyMan::IsMine(const CScript& script) const
 {
+    //lock the thread
     LOCK(cs_desc_man);
+    //If the internal script pub key map has the script
     if (m_map_script_pub_keys.count(script) > 0) {
+        //Return that the script is spendable
         return ISMINE_SPENDABLE;
     }
+
+    //Otherwise return that the script isn't spendable
     return ISMINE_NO;
 }
 
+//RANDY_COMMENTED
+//Checks whether all keys could be decrypted using master_key
 bool DescriptorScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master_key, bool accept_no_keys)
 {
+    //Lock the main thread
     LOCK(cs_desc_man);
+
+    //If the map of keys isn't empty (it hould be empty)
     if (!m_map_keys.empty()) {
+        //return false
         return false;
     }
 
-    bool keyPass = m_map_crypted_keys.empty(); // Always pass when there are no encrypted keys
+    //If the crypted keys are empty, the key should pass
+    bool keyPass = m_map_crypted_keys.empty(); //B_START // Always pass when there are no encrypted keys //B_END
+    //set the keyFail to false by default
     bool keyFail = false;
+
+    //For every crypted key
     for (const auto& mi : m_map_crypted_keys) {
+        //Get the pubkey from the crypted key's value
         const CPubKey &pubkey = mi.second.first;
+
+        //Create a char vec and assign it to the secret
         const std::vector<unsigned char> &crypted_secret = mi.second.second;
+
+        //Declare a key
         CKey key;
+
+        //If the key can't be decrypted with the master key and crypted_secret (like salt)
         if (!DecryptKey(master_key, crypted_secret, pubkey, key)) {
+            //Set that the keyFail is true
             keyFail = true;
+
+            //And break
             break;
         }
+
+        //Otherwise the key pass is true
         keyPass = true;
+
+        //If the decryption is set to be thoroguhly checked (set to true from a past run?)
         if (m_decryption_thoroughly_checked)
+            //break
             break;
     }
+
+    //If the keypass and fail is true, return the error message
     if (keyPass && keyFail) {
         LogPrintf("The wallet is probably corrupted: Some keys decrypt but not all.\n");
         throw std::runtime_error("Error unlocking wallet: some keys decrypt but not all. Your wallet file may be corrupt.");
     }
+
+    //If keyFail or the keypass failed with 'accept_no_keys' set to false
     if (keyFail || (!keyPass && !accept_no_keys)) {
+        //return false
         return false;
     }
+
+    //Set that the decruption was thorougly checked
     m_decryption_thoroughly_checked = true;
+
+    //return true
     return true;
 }
 
+//RANDY_COMMENTED
+//Encrypts every key in m_map_keys, puts it into an empty m_map_crypted_keys using the pubkey id as a key in key-value map, and clears the m_map_keys keymap.
 bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch)
 {
+    //lock the thread
     LOCK(cs_desc_man);
+
+    //If the m_map_crypted_keys is not empty
     if (!m_map_crypted_keys.empty()) {
+        //return false (because keys are already encrypted)
         return false;
     }
 
+    //For every key in m_map_keys
     for (const KeyMap::value_type& key_in : m_map_keys)
     {
+        //Initialize a key to the Ckey (key info)
         const CKey &key = key_in.second;
+
+        //Get the pubkey
         CPubKey pubkey = key.GetPubKey();
+
+        //Get the secret from the pubkey
         CKeyingMaterial secret(key.begin(), key.end());
+
+        //Create a vector of encrypted secrets
         std::vector<unsigned char> crypted_secret;
+
+        //If the key isn't able to be encrypted with the master key, secret, and pubkey hash
         if (!EncryptSecret(master_key, secret, pubkey.GetHash(), crypted_secret)) {
+            //return false
             return false;
         }
+
+        //Get the key id from pubkey and make the value equal to the pubkey and crypted secret
         m_map_crypted_keys[pubkey.GetID()] = make_pair(pubkey, crypted_secret);
+
+        //Write the key (to disk?)
         batch->WriteCryptedDescriptorKey(GetID(), pubkey, crypted_secret);
     }
+
+    //Clear map keys because it was encyrpted
     m_map_keys.clear();
+
+    //return true
     return true;
 }
 
+//RANDY_COMMENTED
+//Gets the op_dest for the type argument passed in and sets the out argument address to whatever could be dervied from the op_dest, the index to the next_index - 1, and returns whether the op_dest has a result
 bool DescriptorScriptPubKeyMan::GetReservedDestination(const OutputType type, bool internal, CTxDestination& address, int64_t& index, CKeyPool& keypool, bilingual_str& error)
 {
+    //lock the thread
     LOCK(cs_desc_man);
+
+    //Get some destination
+    //REVISIT
     auto op_dest = GetNewDestination(type);
+
+    //Get the index of the current descriptor? (since it's next_index - 1)
     index = m_wallet_descriptor.next_index - 1;
+
+    //If the op_dest is defined for the type passed in as argument
     if (op_dest) {
+        //get the address of the op_dest
         address = op_dest.GetObj();
     } else {
+        //Set the error if the op_dest couldn't be retrieved for the type
         error = op_dest.GetError();
     }
+
+    //Return whether the op_dest has a result
     return op_dest.HasRes();
 }
 
+//RANDY_COMMENTED
+//Checks that the index passed in is the latest from the wallet descriptor, decrements the wallet descriptors index, and writes the descriptor to disk using wallet bacth and 'm_storage'.
 void DescriptorScriptPubKeyMan::ReturnDestination(int64_t index, bool internal, const CTxDestination& addr)
 {
+    //obtain a lock
     LOCK(cs_desc_man);
+    //B_START
     // Only return when the index was the most recent
+    //B_END
+
+    //if the wallet descriptor's last index is equal to index passed in
     if (m_wallet_descriptor.next_index - 1 == index) {
+        //Decrements the next_index of the descriptor
         m_wallet_descriptor.next_index--;
     }
+
+    //Write descriptor to storage?
     WalletBatch(m_storage.GetDatabase()).WriteDescriptor(GetID(), m_wallet_descriptor);
+
+    //Perform UI notification?
     NotifyCanGetAddressesChanged();
 }
 
+//RANDY_COMMENTED
+//Return keys from storage if the storage has them and isn't locked. Otherwise return whatever is in m_map+keys
 std::map<CKeyID, CKey> DescriptorScriptPubKeyMan::GetKeys() const
 {
+    //Get the descriptor thread locked
     AssertLockHeld(cs_desc_man);
+
+    //if the storage has encryption keys and the storage isn't locked
     if (m_storage.HasEncryptionKeys() && !m_storage.IsLocked()) {
+        //Make a key map
         KeyMap keys;
+
+        //For every keypair in crypted keys
         for (auto key_pair : m_map_crypted_keys) {
+            //get the pub key
             const CPubKey& pubkey = key_pair.second.first;
+
+            //Get the secret
             const std::vector<unsigned char>& crypted_secret = key_pair.second.second;
+
+            //Declare a key
             CKey key;
+
+            //Decrypt it
             DecryptKey(m_storage.GetEncryptionKey(), crypted_secret, pubkey, key);
+
+            //Add the key to the keys map
             keys[pubkey.GetID()] = key;
         }
+
+        //return the keys
         return keys;
     }
+
+    //Ptherwsie return the map_keys if the storage isn't locked and storage does not have keys
     return m_map_keys;
 }
 
+//RANDY_COMMENTED
+//Set target size equal to size of argument (or default to max(keypoolSize, 1) if size -1), gets a new range end but can be overidden if range_end on descriptor is bigger. Makes sure every script in expanded wallet descriptor has a descriptor index it's tied to in both 'm_map_script_pub_keys' and 'm_map_pub_keys'. The key is the script in the spk map so multiple scripts can go to one index. Also writes descriptor back to disk.
 bool DescriptorScriptPubKeyMan::TopUp(unsigned int size)
 {
+    //Lock the main thread
     LOCK(cs_desc_man);
+
+    //Declara a target size
     unsigned int target_size;
+
+    //If the size i greater than 0
     if (size > 0) {
+        //Set the target size to size
         target_size = size;
     } else {
+        //Set target size equal to max of key pool and '1'
         target_size = std::max(gArgs.GetIntArg("-keypool", DEFAULT_KEYPOOL_SIZE), (int64_t) 1);
     }
 
+    //B_START
     // Calculate the new range_end
+    //B_END
+
+    //Get the max between the wallet descriptor's next index and target size, and the wallet descriptor's range end
     int32_t new_range_end = std::max(m_wallet_descriptor.next_index + (int32_t)target_size, m_wallet_descriptor.range_end);
 
+    //B_START
     // If the descriptor is not ranged, we actually just want to fill the first cache item
+    //B_END
+
+    //if the descriptor isn't a range
     if (!m_wallet_descriptor.descriptor->IsRange()) {
+        //set the new range end to 1
         new_range_end = 1;
+
+        //Set the descriptor's range end to 1
         m_wallet_descriptor.range_end = 1;
+        //Set the range start to 0
         m_wallet_descriptor.range_start = 0;
     }
 
+    //declare signing provider
     FlatSigningProvider provider;
+
+    //Populate with keys from this manager
     provider.keys = GetKeys();
 
+    //Create a batch db abstraction
     WalletBatch batch(m_storage.GetDatabase());
+
+    //Get the id of manager
     uint256 id = GetID();
+
+    //For every  max_cached_index onward until we don't hit the range end.
     for (int32_t i = m_max_cached_index + 1; i < new_range_end; ++i) {
+        //Create another isgning provider
         FlatSigningProvider out_keys;
+
+        //Create vec of scripts
         std::vector<CScript> scripts_temp;
+
+        //Create a temp descripto cache
         DescriptorCache temp_cache;
+
+        //B_START
         // Maybe we have a cached xpub and we can expand from the cache first
+        //B_END
+
+        //If the wallet desciptor can't expand itself with cache and populate the scripts and out keys
         if (!m_wallet_descriptor.descriptor->ExpandFromCache(i, m_wallet_descriptor.cache, scripts_temp, out_keys)) {
-            if (!m_wallet_descriptor.descriptor->Expand(i, provider, scripts_temp, out_keys, &temp_cache)) return false;
+            //And the descriptor can't be expanded through provider
+            if (!m_wallet_descriptor.descriptor->Expand(i, provider, scripts_temp, out_keys, &temp_cache))
+                //Return false
+                return false;
         }
+
+        //B_START
         // Add all of the scriptPubKeys to the scriptPubKey set
+        //B_END
+
+        //For every script in scripts_temp populated by wallet descriptor cache
         for (const CScript& script : scripts_temp) {
+            //Set the value for the script in the m_map_script_pub_keys map to the wallet descriptor index it came from
             m_map_script_pub_keys[script] = i;
         }
+
+        //Fo every key pair in the out_keys
         for (const auto& pk_pair : out_keys.pubkeys) {
+            //Get the pubkey
             const CPubKey& pubkey = pk_pair.second;
+
+            //If the pubkey *IS* found in the m_map_pubkeys
             if (m_map_pubkeys.count(pubkey) != 0) {
+                //B_START
                 // We don't need to give an error here.
                 // It doesn't matter which of many valid indexes the pubkey has, we just need an index where we can derive it and it's private key
+                //B_END
+
+                //skip it because it's been processed somewhere
                 continue;
             }
+
+            //Add the descriptor index where the pubkey was found
             m_map_pubkeys[pubkey] = i;
         }
+
+        //B_START
         // Merge and write the cache
+        //B_END
+
+        //Merge between the temp_cache and wallet descriptor cache
         DescriptorCache new_items = m_wallet_descriptor.cache.MergeAndDiff(temp_cache);
+
+        //If the cache items cant be written
         if (!batch.WriteDescriptorCacheItems(id, new_items)) {
+            //throw
             throw std::runtime_error(std::string(__func__) + ": writing cache items failed");
         }
+
+        //increment the cached index
         m_max_cached_index++;
     }
+
+    //Set the new range end
     m_wallet_descriptor.range_end = new_range_end;
+
+    //Write the descriptor
     batch.WriteDescriptor(GetID(), m_wallet_descriptor);
 
+    //B_START
     // By this point, the cache size should be the size of the entire range
+    //B_END
+
+    //Make assertion
     assert(m_wallet_descriptor.range_end - 1 == m_max_cached_index);
 
+    //Perform UI notification change
     NotifyCanGetAddressesChanged();
+
+    //Return true
     return true;
 }
 
+//RANDY_COMMENTED
+//Looks up the script in m_map_spk, gets the index of loaded (or unloaded) descriptor from script, and loads and returns all the scripts that were not loaded and had to be return via an expanded descriptor.
 std::vector<WalletDestination> DescriptorScriptPubKeyMan::MarkUnusedAddresses(const CScript& script)
 {
+    //lock the main thread
     LOCK(cs_desc_man);
+
+    //Create a vector of wallet destinations
     std::vector<WalletDestination> result;
+
+    //If the script is min
     if (IsMine(script)) {
+        //Use the script in map_script_pub_keys to get the wallet descriptor index
         int32_t index = m_map_script_pub_keys[script];
+
+        //If the index is bigger than after-end index of wallet descriptors, expand from cache
         if (index >= m_wallet_descriptor.next_index) {
+
+            //Log
             WalletLogPrintf("%s: Detected a used keypool item at index %d, mark all keypool items up to this item as used\n", __func__, index);
+
+            //Create a flat signing provider
             auto out_keys = std::make_unique<FlatSigningProvider>();
+
+            //Create a vector of temporary scripts
             std::vector<CScript> scripts_temp;
+
+            //while the index is bigger than the wallet descriptor tip
             while (index >= m_wallet_descriptor.next_index) {
+                //If the wallet descripto's expansion of the next index does not yield keys
                 if (!m_wallet_descriptor.descriptor->ExpandFromCache(m_wallet_descriptor.next_index, m_wallet_descriptor.cache, scripts_temp, *out_keys)) {
+                    //Say the descriptor couldn't be expanded from cache
                     throw std::runtime_error(std::string(__func__) + ": Unable to expand descriptor from cache");
                 }
+
+                //Create a destination
                 CTxDestination dest;
+
+                //call extract destination to get the destination from returned expanded script
                 ExtractDestination(scripts_temp[0], dest);
+
+                //Push the destination to the result
                 result.push_back({dest, std::nullopt});
+
+                //And increment the wallet descriptor
                 m_wallet_descriptor.next_index++;
             }
         }
+
+        //If the top up fails
         if (!TopUp()) {
+            //log it
             WalletLogPrintf("%s: Topping up keypool failed (locked wallet)\n", __func__);
         }
     }
 
+    //Just return the result if it isn't ours. If populated it should contain scripts that were loaded from descriptor
     return result;
 }
 
+//RANDY_COMMENTED
+//Tries to add a (private, public) key pair to the descriptor
 void DescriptorScriptPubKeyMan::AddDescriptorKey(const CKey& key, const CPubKey &pubkey)
 {
+    //lock the main thread
     LOCK(cs_desc_man);
+    //Create a wallet batch with storage
     WalletBatch batch(m_storage.GetDatabase());
+
+    //If the key and pubkey can't be added
     if (!AddDescriptorKeyWithDB(batch, key, pubkey)) {
+        //Say the descriptor private key addition failed
         throw std::runtime_error(std::string(__func__) + ": writing descriptor private key failed");
     }
 }
@@ -2002,31 +2234,49 @@ bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_
     return true;
 }
 
+//RANDY_COMMENTED
+//Returns whether the descriptor wallet's descriptor 'IsRange' (or uses an extended pub key?)
 bool DescriptorScriptPubKeyMan::IsHDEnabled() const
 {
     LOCK(cs_desc_man);
     return m_wallet_descriptor.descriptor->IsRange();
 }
 
+//RANDY_COMMENTED
+//Returns true if descriptor is a single type, ranged (can derive more keys?), and we have pks for (or have it loaded)
 bool DescriptorScriptPubKeyMan::CanGetAddresses(bool internal) const
 {
+    //B_START
     // We can only give out addresses from descriptors that are single type (not combo), ranged,
     // and either have cached keys or can generate more keys (ignoring encryption)
+   //B_END
+
+    //Lock thread
     LOCK(cs_desc_man);
+    //Return if the wallet decriptor is a single type, it's a range, and we have the private keys or the descriptor is loaded
     return m_wallet_descriptor.descriptor->IsSingleType() &&
            m_wallet_descriptor.descriptor->IsRange() &&
            (HavePrivateKeys() || m_wallet_descriptor.next_index < m_wallet_descriptor.range_end);
 }
 
+//RANDY_COMMENTED
+//Return if the m_map_keys has more than 0 entries or if the encrypted keys has more than 0 entries
 bool DescriptorScriptPubKeyMan::HavePrivateKeys() const
 {
+    //Lock the main thread
     LOCK(cs_desc_man);
+
+    //Return if the m_map_keys has more than 0 entries or if the encrypted keys has more than 0 entries
     return m_map_keys.size() > 0 || m_map_crypted_keys.size() > 0;
 }
 
+//RANDY_COMMENTED
+//Returns nullopt for descriptor arguments
 std::optional<int64_t> DescriptorScriptPubKeyMan::GetOldestKeyPoolTime() const
 {
+    //B_START
     // This is only used for getwalletinfo output and isn't relevant to descriptor wallets.
+    //B_END
     return std::nullopt;
 }
 
@@ -2072,22 +2322,43 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
     return GetSigningProvider(index, true);
 }
 
+//RANDY_COMMENTED
+//Create signing provider response (as type FlatSigningprovider), populate the response with pukeys from cache, and if 'include_private' is true, populate the response with private keys from descriptor (using keys collected into master_provider via 'GetKeys'),and returns the resposne 'out_keys'
 std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvider(int32_t index, bool include_private) const
 {
+    //Assert the lock is held
     AssertLockHeld(cs_desc_man);
+
+    //B_START
     // Get the scripts, keys, and key origins for this script
+    //B_END
+
+    //Initialize the FlatSigningProvider
     std::unique_ptr<FlatSigningProvider> out_keys = std::make_unique<FlatSigningProvider>();
+
+    //Declare a vector of script
     std::vector<CScript> scripts_temp;
+
+    //If the wallet descriptor attched to this scriptpubkeyManager cannot be expanded from cache then return null
     if (!m_wallet_descriptor.descriptor->ExpandFromCache(index, m_wallet_descriptor.cache, scripts_temp, *out_keys)) return nullptr;
 
+    //If this manager already has private keys and the param has 'include_private keys' set to true
     if (HavePrivateKeys() && include_private) {
+
+        //Create a master signing provider
         FlatSigningProvider master_provider;
+
+        //Set the keys for the master provider to the pub-priv key map returned from 'GetKeys' (keys owned by this manager)
         master_provider.keys = GetKeys();
+
+        //Set the wallet descriptor to dump all priv keys in 'out_keys'
         m_wallet_descriptor.descriptor->ExpandPrivate(index, master_provider, *out_keys);
     }
 
+    //return out_keys
     return out_keys;
 }
+
 
 std::unique_ptr<SigningProvider> DescriptorScriptPubKeyMan::GetSolvingProvider(const CScript& script) const
 {
@@ -2307,37 +2578,62 @@ void DescriptorScriptPubKeyMan::WriteDescriptor()
     }
 }
 
+//RANDY_COMMENTED
+//Just returns the m_wallet_descriptor property
 const WalletDescriptor DescriptorScriptPubKeyMan::GetWalletDescriptor() const
 {
     return m_wallet_descriptor;
 }
 
+//RANDY_COMMENTED
+//Copies everything in m_map_script_pub_keys to a new vector and returns that
 const std::vector<CScript> DescriptorScriptPubKeyMan::GetScriptPubKeys() const
 {
+    //Locks the main thread
     LOCK(cs_desc_man);
+
+    //Create a vector of script pub keys
     std::vector<CScript> script_pub_keys;
+
+    //Reserve as much size as the script pub keys map we have as a member
     script_pub_keys.reserve(m_map_script_pub_keys.size());
 
+    //For every script_pub_key in our saved spk map
     for (auto const& script_pub_key: m_map_script_pub_keys) {
+        //Add it to the script_pub_keys vec we created
         script_pub_keys.push_back(script_pub_key.first);
     }
+
+    //Returns script pub keys
     return script_pub_keys;
 }
 
+//RANDY_COMMENTED
+//Loads keys into the flatsigning provider and uses it as an arg to stringify method on descriptor
 bool DescriptorScriptPubKeyMan::GetDescriptorString(std::string& out, const bool priv) const
 {
+    //MAIN THREAD LOCK
     LOCK(cs_desc_man);
 
+    //Declare signing provider
     FlatSigningProvider provider;
+
+    //Load the keypairs from storage (or map_keys if storage isn't possible) into the provider
     provider.keys = GetKeys();
 
+    //If the private bool arg is true
     if (priv) {
+        //B_START
         // For the private version, always return the master key to avoid
         // exposing child private keys. The risk implications of exposing child
         // private keys together with the parent xpub may be non-obvious for users.
+        //B_END
+
+        //Return the descriptor's private string
         return m_wallet_descriptor.descriptor->ToPrivateString(provider, out);
     }
 
+    //If private is false return the normalized string
     return m_wallet_descriptor.descriptor->ToNormalizedString(provider, out, &m_wallet_descriptor.cache);
 }
 

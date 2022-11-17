@@ -768,6 +768,8 @@ static RPCHelpMan getreceivedbylabel()
 }
 
 
+//RANDY_COMMENTED
+//Syncs the wallet and passes the 2 args to another 'GetBalance' method on pwallet
 static RPCHelpMan getbalance()
 {
     return RPCHelpMan{"getbalance",
@@ -793,31 +795,51 @@ static RPCHelpMan getbalance()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    //Get the CWallet and put it into pwallet
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+
+    //If pwallet is unavailable, return null
     if (!pwallet) return NullUniValue;
 
+    //B_START
     // Make sure the results are valid at least up to the most recent block
     // the user could have gotten from another RPC command prior to now
+    //B_END
+
+    //Waits to get the wallet up to date with block count
     pwallet->BlockUntilSyncedToCurrentChain();
 
+    //Locks the cswallet in the pwallet
     LOCK(pwallet->cs_wallet);
 
+    //Set a dummy value to first param
     const UniValue& dummy_value = request.params[0];
+
+    //If the dummy value isnt null and it's a string that's not '*'
     if (!dummy_value.isNull() && dummy_value.get_str() != "*") {
+        //Say that having a first arg is deprecated (should be "" instead?)
         throw JSONRPCError(RPC_METHOD_DEPRECATED, "dummy first argument must be excluded or set to \"*\".");
     }
 
+    //Set min_depth to 0
     int min_depth = 0;
+
+    //If the 2nd request param isn't null
     if (!request.params[1].isNull()) {
+        //Set min_depth to first param's int
         min_depth = request.params[1].get_int();
     }
 
+    //Get 3rd params asking whether we should include wathc onlu
     bool include_watchonly = ParseIncludeWatchonly(request.params[2], *pwallet);
 
+    //get a bool flag to say whether we should avoid reuse
     bool avoid_reuse = GetAvoidReuseFlag(*pwallet, request.params[3]);
 
+    //Call the wallet's 'GetBalance' with the 2 arguments to this rpc call
     const auto bal = pwallet->GetBalance(min_depth, avoid_reuse);
 
+    //Get the sum of the (confirmed?) balances of our wallets and (optionally) our watch only wallets
     return ValueFromAmount(bal.m_mine_trusted + (include_watchonly ? bal.m_watchonly_trusted : 0));
 },
     };

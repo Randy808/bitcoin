@@ -290,32 +290,68 @@ bool CachedTxIsTrusted(const CWallet& wallet, const CWalletTx& wtx)
     return CachedTxIsTrusted(wallet, wtx, trusted_parents);
 }
 
+//RANDY_COMMENTED
+//Calculates balances of utxos that meet different criteria like unconfimed/untrusted, trusted balance, etc. Looks like same utxo could be used in different ones(like untrusted to immature?)
 Balance GetBalance(const CWallet& wallet, const int min_depth, bool avoid_reuse)
 {
+    //Create a balance return value
     Balance ret;
+
+    //Set the reuse_filter based on whether 'avoid_reuse' in param is true (defined on 'getwallet' call)
     isminefilter reuse_filter = avoid_reuse ? ISMINE_NO : ISMINE_USED;
     {
+        //Lock the cs_wallet
         LOCK(wallet.cs_wallet);
+
+        //Create a set of hashes
         std::set<uint256> trusted_parents;
+
+        //For every entry in mapWallet
         for (const auto& entry : wallet.mapWallet)
         {
+
+            //Get the entry's second val to get the wallet tx
             const CWalletTx& wtx = entry.second;
+
+            //Get whether the cached wallet is trusted by passing in wallet, gainned tx, and trusted_patents (to be populate din this loop)
             const bool is_trusted{CachedTxIsTrusted(wallet, wtx, trusted_parents)};
+
+            //Get the tx depth of the entry
             const int tx_depth{wallet.GetTxDepthInMainChain(wtx)};
+
+            //Get the amount we have from wallet's available credit
             const CAmount tx_credit_mine{CachedTxGetAvailableCredit(wallet, wtx, ISMINE_SPENDABLE | reuse_filter)};
+
+            //Get watch only credit for entry
             const CAmount tx_credit_watchonly{CachedTxGetAvailableCredit(wallet, wtx, ISMINE_WATCH_ONLY | reuse_filter)};
+
+            //If the wallet tx is trusted and the deoth is high enough
             if (is_trusted && tx_depth >= min_depth) {
+                //Add the trusted credit to our trusted balance
                 ret.m_mine_trusted += tx_credit_mine;
+
+                //Add teh watch only credit to trusted balance
                 ret.m_watchonly_trusted += tx_credit_watchonly;
             }
+
+            //If its not trusted and there's no depth, AND we can affirst the tx is in mempool
             if (!is_trusted && tx_depth == 0 && wtx.InMempool()) {
+
+                //Just add the balance to the untrusted balance
                 ret.m_mine_untrusted_pending += tx_credit_mine;
+                //Add untrusted watch only to watch onlu as well
                 ret.m_watchonly_untrusted_pending += tx_credit_watchonly;
             }
+
+            //Add the immature credit
             ret.m_mine_immature += CachedTxGetImmatureCredit(wallet, wtx, ISMINE_SPENDABLE);
+
+            //Add the immature watchonly credit
             ret.m_watchonly_immature += CachedTxGetImmatureCredit(wallet, wtx, ISMINE_WATCH_ONLY);
         }
     }
+
+    //Return the return balance
     return ret;
 }
 
