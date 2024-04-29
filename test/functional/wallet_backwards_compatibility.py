@@ -174,6 +174,7 @@ class BackwardsCompatibilityTest(BitcoinTestFramework):
         tx4_id = node_master.bumpfee(tx3_id)["txid"]
         # Abandon transaction, but don't confirm
         node_master.abandontransaction(tx3_id)
+        self.sync_mempools()
 
         # w2: wallet with private keys disabled, created on master: update this
         #     test when default wallets private keys disabled can no longer be

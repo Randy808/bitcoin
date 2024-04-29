@@ -186,7 +186,12 @@ void ValidationSignals::UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlo
 void ValidationSignals::TransactionAddedToMempool(const NewMempoolTransactionInfo& tx, uint64_t mempool_sequence)
 {
     auto event = [tx, mempool_sequence, this] {
-        m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.TransactionAddedToMempool(tx, mempool_sequence); });
+        m_internals->Iterate([&](CValidationInterface& callbacks) {
+            [&, tx, mempool_sequence] {
+                UninterruptibleSleep(40ms);
+                return callbacks.TransactionAddedToMempool(tx, mempool_sequence);
+            }();
+        });
     };
     ENQUEUE_AND_LOG_EVENT(event, "%s: txid=%s wtxid=%s", __func__,
                           tx.info.m_tx->GetHash().ToString(),
@@ -195,7 +200,12 @@ void ValidationSignals::TransactionAddedToMempool(const NewMempoolTransactionInf
 
 void ValidationSignals::TransactionRemovedFromMempool(const CTransactionRef& tx, MemPoolRemovalReason reason, uint64_t mempool_sequence) {
     auto event = [tx, reason, mempool_sequence, this] {
-        m_internals->Iterate([&](CValidationInterface& callbacks) { callbacks.TransactionRemovedFromMempool(tx, reason, mempool_sequence); });
+        m_internals->Iterate([&](CValidationInterface& callbacks) {
+            [&, tx, mempool_sequence] {
+                UninterruptibleSleep(40ms);
+                return callbacks.TransactionRemovedFromMempool(tx, reason, mempool_sequence);
+            }();
+        });
     };
     ENQUEUE_AND_LOG_EVENT(event, "%s: txid=%s wtxid=%s reason=%s", __func__,
                           tx->GetHash().ToString(),
